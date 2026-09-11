@@ -1,0 +1,131 @@
+package sn.jappo.jappo_backend.dashboard.service;
+
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.data.domain.PageRequest;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import sn.jappo.jappo_backend.cohorte.repository.CohorteRepository;
+import sn.jappo.jappo_backend.config.tenant.TenantContext;
+import sn.jappo.jappo_backend.dashboard.dto.AlerteProjetResponse;
+import sn.jappo.jappo_backend.dashboard.dto.DashboardStatsResponse;
+import sn.jappo.jappo_backend.dashboard.dto.LivrableRecentResponse;
+import sn.jappo.jappo_backend.livrable.entity.StatutLivrable;
+import sn.jappo.jappo_backend.livrable.repository.LivrableRepository;
+import sn.jappo.jappo_backend.projet.repository.ProjetRepository;
+import sn.jappo.jappo_backend.user.repository.UserRepository;
+
+@Service
+public class DashboardService {
+
+    private final UserRepository userRepository;
+    private final CohorteRepository cohorteRepository;
+    private final ProjetRepository projetRepository;
+    private final LivrableRepository livrableRepository;
+
+    public DashboardService(
+            UserRepository userRepository,
+            CohorteRepository cohorteRepository,
+            ProjetRepository projetRepository,
+            LivrableRepository livrableRepository
+    ) {
+        this.userRepository = userRepository;
+        this.cohorteRepository = cohorteRepository;
+        this.projetRepository = projetRepository;
+        this.livrableRepository = livrableRepository;
+    }
+
+    @Transactional(readOnly = true)
+    public DashboardStatsResponse getStatsForActiveStructure() {
+        UUID structureId = getRequiredTenantId();
+
+        long totalEntrepreneurs = userRepository.countEntrepreneursByStructureId(structureId);
+        long actifs = userRepository.countEntrepreneursActifsByStructureId(structureId);
+        long enAttente = totalEntrepreneurs - actifs;
+
+        long cohortes = cohorteRepository.countByStructureId(structureId);
+
+        Integer maturiteMoyenne = projetRepository.findAverageScoreMaturiteByStructureId(structureId);
+        int scoreMoyen = (maturiteMoyenne != null) ? maturiteMoyenne : 0;
+
+        long projetsAttention = projetRepository.countProjetsAttentionByStructureId(structureId, 40);
+        long livrablesEnAttente = livrableRepository.countByStructureIdAndStatut(structureId, StatutLivrable.EN_ATTENTE);
+
+        return new DashboardStatsResponse(
+                totalEntrepreneurs,
+                actifs,
+                enAttente,
+                cohortes,
+                scoreMoyen,
+                projetsAttention,
+                livrablesEnAttente
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<AlerteProjetResponse> getProjetsAlertesForActiveStructure() {
+        UUID structureId = getRequiredTenantId();
+
+        return projetRepository.findAllByStructureIdAndScoreMaturiteLessThan(structureId, 40)
+                .stream()
+                .map(p -> {
+                    String nomEntrepreneur = p.getEntrepreneur() != null
+                            ? (p.getEntrepreneur().getPrenom() != null ? p.getEntrepreneur().getPrenom() + " " : "")
+                                + (p.getEntrepreneur().getNom() != null ? p.getEntrepreneur().getNom() : "")
+                            : "Non assigné";
+
+                    String email = p.getEntrepreneur() != null ? p.getEntrepreneur().getEmail() : null;
+                    UUID entrepreneurId = p.getEntrepreneur() != null ? p.getEntrepreneur().getId() : null;
+                    String nomCohorte = p.getCohorte() != null ? p.getCohorte().getNom() : "—";
+
+                    return new AlerteProjetResponse(
+                            p.getId(),
+                            p.getNom(),
+                            entrepreneurId,
+                            nomEntrepreneur.trim(),
+                            email,
+                            nomCohorte,
+                            p.getScoreMaturite(),
+                            "Maturité faible (< 40%)"
+                    );
+                })
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<LivrableRecentResponse> getLivrablesRecentsForActiveStructure(int limit) {
+        UUID structureId = getRequiredTenantId();
+
+        return livrableRepository.findAllByStructureIdOrderByDateDepotDesc(structureId, PageRequest.of(0, limit))
+                .stream()
+                .map(l -> {
+                    String nomProjet = l.getProjet() != null ? l.getProjet().getNom() : "—";
+                    String nomEntrepreneur = (l.getProjet() != null && l.getProjet().getEntrepreneur() != null)
+                            ? (l.getProjet().getEntrepreneur().getPrenom() != null ? l.getProjet().getEntrepreneur().getPrenom() + " " : "")
+                                + (l.getProjet().getEntrepreneur().getNom() != null ? l.getProjet().getEntrepreneur().getNom() : "")
+                            : "—";
+
+                    return new LivrableRecentResponse(
+                            l.getId(),
+                            l.getNom(),
+                            l.getProjet() != null ? l.getProjet().getId() : null,
+                            nomProjet,
+                            nomEntrepreneur.trim(),
+                            l.getStatut(),
+                            l.getDateDepot()
+                    );
+                })
+                .toList();
+    }
+
+    private UUID getRequiredTenantId() {
+        UUID tenantId = TenantContext.getCurrentTenant();
+        if (tenantId == null) {
+            throw new IllegalStateException("Aucune structure active sélectionnée (en-tête X-Structure-Id manquant)");
+        }
+        return tenantId;
+    }
+}

@@ -24,4 +24,7 @@ public record UserResponse(
                 user.getDateCreation()
         );
     }
+
+
+    
 }

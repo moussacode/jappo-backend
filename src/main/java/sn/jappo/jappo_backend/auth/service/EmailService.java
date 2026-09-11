@@ -1,75 +1,35 @@
 package sn.jappo.jappo_backend.auth.service;
 
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 @Service
 public class EmailService {
 
-    private final JavaMailSender mailSender;
-
-    public EmailService(JavaMailSender mailSender) {
-        this.mailSender = mailSender;
-    }
-
     public void sendVerificationCode(String email, String code) {
-
-        SimpleMailMessage message = new SimpleMailMessage();
-
-        message.setTo(email);
-        message.setSubject("JAPPO - Vérification de votre adresse email");
-
-        message.setText("""
-                Bonjour,
-
-                Votre code de vérification JAPPO est :
-
-                %s
-
-                Ce code est valable pendant 10 minutes.
-
-                Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet email.
-
-                L'équipe JAPPO
-                """.formatted(code));
-
-        mailSender.send(message);
+        System.out.println("\n========================================================================");
+        System.out.println("[CONSOLE ONLY] Code de vérification pour : " + email);
+        System.out.println("Code : " + code);
+        System.out.println("========================================================================\n");
     }
 
-    public void sendPasswordResetCode(
-        String email,
-        String code
-) {
+    public void sendPasswordResetCode(String email, String code) {
+        System.out.println("\n========================================================================");
+        System.out.println("[CONSOLE ONLY] Code de réinitialisation pour : " + email);
+        System.out.println("Code : " + code);
+        System.out.println("========================================================================\n");
+    }
 
-    //  implémentation d'envoi email
-    SimpleMailMessage message = new SimpleMailMessage();
+    // Uniquement affichage du lien d'invitation dans le terminal (aucun envoi d'email)
+    public void sendInvitationEmail(String email, String nom, String token, String nomStructure) {
+        String magicLink = "http://localhost:4200/auth/accept-invitation?token=" + token;
 
-        message.setTo(email);
-
-        message.setSubject(
-                "JAPPO - Réinitialisation de votre mot de passe"
-        );
-
-        message.setText("""
-                Bonjour,
-
-                Vous avez demandé la réinitialisation de votre
-                mot de passe JAPPO.
-
-                Votre code de réinitialisation est :
-
-                %s
-
-                Ce code est valable pendant 10 minutes.
-
-                Si vous n'êtes pas à l'origine de cette demande,
-                ignorez simplement cet email.
-
-                L'équipe JAPPO
-                """.formatted(code));
-
-        mailSender.send(message);
-
+        System.out.println("\n========================================================================");
+        System.out.println("📩 [CONSOLE ONLY] Invitation créée pour : " + email);
+        System.out.println("🏛️ Structure : " + nomStructure);
+        System.out.println("🔗 Lien direct d'activation (Magic Link) :");
+        System.out.println(magicLink);
+        System.out.println("========================================================================\n");
+    }
 }
-}
+
+
