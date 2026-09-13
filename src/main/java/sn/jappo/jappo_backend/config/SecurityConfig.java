@@ -48,20 +48,12 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
                 // Routes publiques d'authentification et d'invitation
-                .requestMatchers("/api/auth/**").permitAll()
-
-                .requestMatchers("/api/projets/**").authenticated()
-                
-                // Documentation Swagger
                 .requestMatchers(
-                    "/swagger-ui/**",
-                    "/swagger-ui.html",
-                    "/v3/api-docs/**"
-                ).permitAll()
-
-                // Accès explicite aux projets pour les utilisateurs authentifiés
-                .requestMatchers("/api/projets/**").authenticated()
-
+    "/api/auth/login", "/api/auth/register", "/api/auth/invitation-info",
+    "/api/auth/accepter-invitation", "/api/auth/forgot-password", "/api/auth/reset-password"
+).permitAll()
+.requestMatchers("/api/auth/**").authenticated()
+.requestMatchers("/swagger-ui/**","/swagger-ui.html","/v3/api-docs/**").permitAll()
                 // Tout le reste nécessite un JWT valide
                 .anyRequest().authenticated()
             )

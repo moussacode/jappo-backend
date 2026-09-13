@@ -2,7 +2,7 @@ package sn.jappo.jappo_backend.livrable.service;
 
 import java.util.List;
 import java.util.UUID;
-
+import sn.jappo.jappo_backend.livrable.dto.UpdateLivrableRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -137,4 +137,33 @@ public class LivrableService {
                 livrable.getStructure().getId()
         );
     }
+
+    @Transactional
+public LivrableResponse updateLivrable(UUID id, UpdateLivrableRequest request) {
+    UUID activeStructureId = getRequiredTenantId();
+    Livrable livrable = livrableRepository.findByIdAndStructureId(id, activeStructureId)
+            .orElseThrow(() -> new RuntimeException("Livrable introuvable"));
+
+    if (livrable.getStatut() != StatutLivrable.EN_ATTENTE) {
+        throw new IllegalStateException("Ce livrable a déjà été évalué, il ne peut plus être modifié.");
+    }
+
+    if (request.nom() != null) livrable.setNom(request.nom());
+    if (request.url() != null) livrable.setUrl(request.url());
+
+    return mapToResponse(livrableRepository.save(livrable));
+}
+
+@Transactional
+public void deleteLivrable(UUID id) {
+    UUID activeStructureId = getRequiredTenantId();
+    Livrable livrable = livrableRepository.findByIdAndStructureId(id, activeStructureId)
+            .orElseThrow(() -> new RuntimeException("Livrable introuvable"));
+
+    if (livrable.getStatut() != StatutLivrable.EN_ATTENTE) {
+        throw new IllegalStateException("Ce livrable a déjà été évalué, il ne peut plus être supprimé.");
+    }
+
+    livrableRepository.delete(livrable);
+}
 }

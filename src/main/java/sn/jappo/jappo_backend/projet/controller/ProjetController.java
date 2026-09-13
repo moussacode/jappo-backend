@@ -2,13 +2,14 @@ package sn.jappo.jappo_backend.projet.controller;
 
 import java.util.List;
 import java.util.UUID;
-
+import sn.jappo.jappo_backend.projet.dto.UpdateProjetRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import java.util.Map;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -62,4 +63,16 @@ public class ProjetController {
         String nouveauNom = body.get("nom");
         return ResponseEntity.ok(projetService.updateNomProjet(id, nouveauNom));
     }
+
+    @PatchMapping("/{id}")
+public ResponseEntity<ProjetResponse> updateProjet(
+        @PathVariable UUID id, @RequestBody UpdateProjetRequest request) {
+    return ResponseEntity.ok(projetService.updateProjet(id, request));
+}
+
+@DeleteMapping("/{id}")
+public ResponseEntity<Void> archiverProjet(@PathVariable UUID id) {
+    projetService.archiverProjet(id);
+    return ResponseEntity.noContent().build();
+}
 }

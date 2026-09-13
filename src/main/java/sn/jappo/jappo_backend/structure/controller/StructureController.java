@@ -15,7 +15,8 @@ import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.MembreStructureRepository;
 import sn.jappo.jappo_backend.structure.service.StructureService;
 import sn.jappo.jappo_backend.user.entity.User;
-
+import java.util.UUID;
+import sn.jappo.jappo_backend.structure.dto.UpdateStructureRequest;
 @RestController
 @RequestMapping("/api/structures")
 public class StructureController {
@@ -84,4 +85,14 @@ public ResponseEntity<List<StructureMembershipResponse>> getMyStructures(
     return ResponseEntity.ok(memberships);
 }
 
+
+@PatchMapping("/{id}")
+public ResponseEntity<Structure> updateStructure(
+        @PathVariable UUID id,
+        @RequestBody UpdateStructureRequest request,
+        Authentication authentication
+) {
+    User user = (User) authentication.getPrincipal();
+    return ResponseEntity.ok(structureService.updateStructure(id, request, user));
+}
 }

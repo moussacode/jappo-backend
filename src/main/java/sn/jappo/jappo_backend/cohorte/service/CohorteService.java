@@ -7,6 +7,7 @@ import sn.jappo.jappo_backend.cohorte.dto.CohorteResponse;
 import sn.jappo.jappo_backend.cohorte.dto.CreateCohorteRequest;
 import sn.jappo.jappo_backend.cohorte.entity.Cohorte;
 import sn.jappo.jappo_backend.cohorte.entity.StatutCohorte;
+import sn.jappo.jappo_backend.cohorte.dto.UpdateCohorteRequest;
 import sn.jappo.jappo_backend.cohorte.repository.CohorteRepository;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
@@ -81,4 +82,30 @@ public class CohorteService {
                 cohorte.getStructure().getId()
         );
     }
+
+
+
+    @Transactional
+public CohorteResponse updateCohorte(UUID id, UpdateCohorteRequest request) {
+    UUID activeStructureId = getRequiredTenantId();
+    Cohorte cohorte = cohorteRepository.findByIdAndStructureId(id, activeStructureId)
+            .orElseThrow(() -> new RuntimeException("Cohorte introuvable"));
+
+    if (request.nom() != null) cohorte.setNom(request.nom());
+    if (request.description() != null) cohorte.setDescription(request.description());
+    if (request.dateDebut() != null) cohorte.setDateDebut(request.dateDebut());
+    if (request.dateFin() != null) cohorte.setDateFin(request.dateFin());
+    if (request.statut() != null) cohorte.setStatut(request.statut());
+
+    return mapToResponse(cohorteRepository.save(cohorte));
+}
+
+@Transactional
+public void archiverCohorte(UUID id) {
+    UUID activeStructureId = getRequiredTenantId();
+    Cohorte cohorte = cohorteRepository.findByIdAndStructureId(id, activeStructureId)
+            .orElseThrow(() -> new RuntimeException("Cohorte introuvable"));
+    cohorte.setStatut(StatutCohorte.ARCHIVEE);
+    cohorteRepository.save(cohorte);
+}
 }

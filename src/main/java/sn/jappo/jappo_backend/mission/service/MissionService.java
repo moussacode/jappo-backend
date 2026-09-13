@@ -3,7 +3,7 @@ package sn.jappo.jappo_backend.mission.service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-
+import sn.jappo.jappo_backend.mission.dto.UpdateMissionRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -233,4 +233,30 @@ public class MissionService {
                 livrablesDeposes                                         // nombreLivrablesDeposes calculé
         );
     }
+
+
+
+    @Transactional
+public MissionResponse updateMissionDetails(UUID missionProjetId, UpdateMissionRequest request) {
+    UUID activeStructureId = getRequiredTenantId();
+    MissionProjet mp = missionProjetRepository.findByIdAndStructureId(missionProjetId, activeStructureId)
+            .orElseThrow(() -> new RuntimeException("Mission introuvable"));
+
+    MissionCohorte mc = mp.getMissionCohorte();
+    if (request.titre() != null) mc.setTitre(request.titre());
+    if (request.description() != null) mc.setDescription(request.description());
+    if (request.dateEcheance() != null) mc.setDateEcheance(request.dateEcheance());
+    if (request.priorite() != null) mc.setPriorite(request.priorite());
+    missionCohorteRepository.save(mc);
+
+    return mapToResponse(mp);
+}
+
+@Transactional
+public void deleteMission(UUID missionProjetId) {
+    UUID activeStructureId = getRequiredTenantId();
+    MissionProjet mp = missionProjetRepository.findByIdAndStructureId(missionProjetId, activeStructureId)
+            .orElseThrow(() -> new RuntimeException("Mission introuvable"));
+    missionProjetRepository.delete(mp);
+}
 }

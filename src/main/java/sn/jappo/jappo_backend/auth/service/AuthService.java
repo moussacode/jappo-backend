@@ -5,7 +5,9 @@ import java.time.LocalDateTime;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import sn.jappo.jappo_backend.auth.dto.AccepterInvitationRequest;
 import sn.jappo.jappo_backend.auth.dto.AuthResponse;
 import sn.jappo.jappo_backend.auth.dto.InvitationInfoResponse;
@@ -50,7 +52,7 @@ public class AuthService {
     public User register(RegisterRequest request) {
 
         if (userRepository.existsByEmail(request.email())) {
-            throw new RuntimeException("Cet email est déjà utilisé");
+           throw new ResponseStatusException(HttpStatus.CONFLICT, "Cet email est déjà utilisé");
         }
 
         User user = new User();
@@ -74,15 +76,17 @@ public class AuthService {
     public User login(String email, String password) {
 
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Email ou mot de passe incorrect"));
+                .orElseThrow(() -> new  BadCredentialsException("Email ou mot de passe incorrect"));
 
         if (!passwordEncoder.matches(password, user.getPassword())) {
-            throw new RuntimeException("Email ou mot de passe incorrect");
+            throw new BadCredentialsException("Email ou mot de passe incorrect");
         }
 
         if (!user.isEmailVerified()) {
-            throw new RuntimeException(
-                    "Veuillez vérifier votre adresse email avant de vous connecter");
+            throw new ResponseStatusException(
+    HttpStatus.FORBIDDEN,
+    "Veuillez vérifier votre adresse email avant de vous connecter"
+);
         }
 
         return user;

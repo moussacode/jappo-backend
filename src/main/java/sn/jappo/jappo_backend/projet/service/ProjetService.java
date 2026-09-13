@@ -7,7 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import sn.jappo.jappo_backend.projet.dto.UpdateProjetRequest;
 import sn.jappo.jappo_backend.cohorte.entity.Cohorte;
 import sn.jappo.jappo_backend.cohorte.repository.CohorteRepository;
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
@@ -161,5 +161,28 @@ public ProjetResponse updateNomProjet(UUID id, String nouveauNom) {
     projet.setNom(nouveauNom);
     Projet updated = projetRepository.save(projet);
     return mapToResponse(updated);
+}
+
+
+@Transactional
+public ProjetResponse updateProjet(UUID id, UpdateProjetRequest request) {
+    UUID activeStructureId = getRequiredTenantId();
+    Projet projet = projetRepository.findByIdAndStructureId(id, activeStructureId)
+            .orElseThrow(() -> new RuntimeException("Projet introuvable"));
+
+    if (request.nom() != null) projet.setNom(request.nom());
+    if (request.description() != null) projet.setDescription(request.description());
+    if (request.secteur() != null) projet.setSecteur(request.secteur());
+
+    return mapToResponse(projetRepository.save(projet));
+}
+
+@Transactional
+public void archiverProjet(UUID id) {
+    UUID activeStructureId = getRequiredTenantId();
+    Projet projet = projetRepository.findByIdAndStructureId(id, activeStructureId)
+            .orElseThrow(() -> new RuntimeException("Projet introuvable"));
+    projet.setStatut(StatutProjet.ABANDONNE);
+    projetRepository.save(projet);
 }
 }

@@ -22,15 +22,16 @@ public class TestController {
         return "JAPPO Backend fonctionne !";
     }
 
-    // NOUVEAU : Endpoint de vérification du TenantContext
-    @GetMapping("/tenant")
-    public ResponseEntity<Map<String, Object>> testTenant(@AuthenticationPrincipal User currentUser) {
-        UUID activeTenantId = TenantContext.getCurrentTenant();
+    // NOUVEAU : Endpoint de vérification du TenantContext ********************A SUPPRIMER
+    // @GetMapping("/tenant")
+    // public ResponseEntity<Map<String, Object>> testTenant(@AuthenticationPrincipal User currentUser) {
+    //     UUID activeTenantId = TenantContext.getCurrentTenant();
 
-        return ResponseEntity.ok(Map.of(
-            "message", "Le filtre multi-tenant fonctionne !",
-            "utilisateurConnecte", currentUser != null ? currentUser.getEmail() : "Non authentifié",
-            "activeStructureId", activeTenantId != null ? activeTenantId.toString() : "Aucune structure passée dans X-Structure-Id (null)"
-        ));
-    }
+    //     return ResponseEntity.ok(Map.of(
+    //         "message", "Le filtre multi-tenant fonctionne !",
+    //         "utilisateurConnecte", currentUser != null ? currentUser.getEmail() : "Non authentifié",
+    //         "activeStructureId", activeTenantId != null ? activeTenantId.toString() : "Aucune structure passée dans X-Structure-Id (null)"
+    //     ));
+    // }
+
 }
