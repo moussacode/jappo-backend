@@ -15,6 +15,12 @@ import sn.jappo.jappo_backend.structure.repository.MembreStructureRepository;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
 import sn.jappo.jappo_backend.user.entity.User;
 
+
+import org.springframework.http.HttpStatus;
+import  org.springframework.web.server.ResponseStatusException;
+import  sn.jappo.jappo_backend.structure.dto.UpdateStructureRequest;
+import java.util.UUID;
+
 @Service
 public class StructureService {
 
@@ -91,4 +97,30 @@ public class StructureService {
                 .map(MembreStructure::getStructure)
                 .toList();
     }
+
+
+    @Transactional
+public Structure updateStructure(UUID structureId, UpdateStructureRequest request, User user) {
+    var membre = membreStructureRepository.findByUserIdAndStructureId(user.getId(), structureId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Accès refusé."));
+
+    if (membre.getRole() != RoleMembreStructure.ADMIN_STRUCTURE) {
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Seul un administrateur de la structure peut modifier ces informations.");
+    }
+
+    Structure structure = structureRepository.findById(structureId)
+            .orElseThrow(() -> new RuntimeException("Structure introuvable"));
+
+    if (request.nom() != null) structure.setNom(request.nom());
+    if (request.description() != null) structure.setDescription(request.description());
+    if (request.email() != null) structure.setEmail(request.email());
+    if (request.telephone() != null) structure.setTelephone(request.telephone());
+    if (request.adresse() != null) structure.setAdresse(request.adresse());
+    if (request.ville() != null) structure.setVille(request.ville());
+    if (request.siteWeb() != null) structure.setSiteWeb(request.siteWeb());
+    if (request.logo() != null) structure.setLogo(request.logo());
+
+    return structureRepository.save(structure);
+}
 }

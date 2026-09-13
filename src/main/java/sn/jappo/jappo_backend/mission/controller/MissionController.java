@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import sn.jappo.jappo_backend.mission.dto.UpdateMissionRequest;
 import sn.jappo.jappo_backend.mission.dto.CreateMissionRequest;
 import sn.jappo.jappo_backend.mission.dto.MissionResponse;
 import sn.jappo.jappo_backend.mission.dto.UpdateStatutMissionRequest;
@@ -74,7 +76,17 @@ public class MissionController {
     }
 
 
+    @PatchMapping("/{id}/details")
+public ResponseEntity<MissionResponse> updateMissionDetails(
+        @PathVariable UUID id, @RequestBody UpdateMissionRequest request) {
+    return ResponseEntity.ok(missionService.updateMissionDetails(id, request));
+}
 
+@DeleteMapping("/{id}")
+public ResponseEntity<Void> deleteMission(@PathVariable UUID id) {
+    missionService.deleteMission(id);
+    return ResponseEntity.noContent().build();
+}
 
     
 }

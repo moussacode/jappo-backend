@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import sn.jappo.jappo_backend.cohorte.dto.CohorteResponse;
 import sn.jappo.jappo_backend.cohorte.dto.CreateCohorteRequest;
 import sn.jappo.jappo_backend.cohorte.service.CohorteService;
+import sn.jappo.jappo_backend.cohorte.dto.UpdateCohorteRequest;
 
 import java.util.List;
 import java.util.UUID;
@@ -36,4 +37,17 @@ public class CohorteController {
     public ResponseEntity<CohorteResponse> getCohorteById(@PathVariable UUID id) {
         return ResponseEntity.ok(cohorteService.getCohorteById(id));
     }
+
+
+    @PatchMapping("/{id}")
+public ResponseEntity<CohorteResponse> updateCohorte(
+        @PathVariable UUID id, @RequestBody UpdateCohorteRequest request) {
+    return ResponseEntity.ok(cohorteService.updateCohorte(id, request));
+}
+
+@DeleteMapping("/{id}")
+public ResponseEntity<Void> archiverCohorte(@PathVariable UUID id) {
+    cohorteService.archiverCohorte(id);
+    return ResponseEntity.noContent().build();
+}
 }

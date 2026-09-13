@@ -2,11 +2,18 @@ package sn.jappo.jappo_backend.livrable.controller;
 
 import java.util.List;
 import java.util.UUID;
-
+import org.springframework.web.bind.annotation.RequestParam;
+import sn.jappo.jappo_backend.livrable.dto.UpdateLivrableRequest;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.MediaType;
+import sn.jappo.jappo_backend.livrable.service.FileStorageService;
+import java.util.Map;
+import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,9 +30,11 @@ import sn.jappo.jappo_backend.livrable.service.LivrableService;
 public class LivrableController {
 
     private final LivrableService livrableService;
+    private final FileStorageService fileStorageService;
 
-    public LivrableController(LivrableService livrableService) {
+    public LivrableController(LivrableService livrableService, FileStorageService fileStorageService) {
         this.livrableService = livrableService;
+        this.fileStorageService = fileStorageService;
     }
 
     @PostMapping
@@ -37,8 +46,7 @@ public class LivrableController {
     @PatchMapping("/{id}/evaluer")
     public ResponseEntity<LivrableResponse> evaluateLivrable(
             @PathVariable UUID id,
-            @RequestBody EvaluateLivrableRequest request
-    ) {
+            @RequestBody EvaluateLivrableRequest request) {
         return ResponseEntity.ok(livrableService.evaluateLivrable(id, request));
     }
 
@@ -51,4 +59,27 @@ public class LivrableController {
     public ResponseEntity<List<LivrableResponse>> getLivrablesByProjet(@PathVariable UUID projetId) {
         return ResponseEntity.ok(livrableService.getLivrablesByProjet(projetId));
     }
+
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, String>> uploadFichier(@RequestParam("file") MultipartFile file) {
+        UUID structureId = TenantContext.getCurrentTenant();
+        if (structureId == null) {
+            throw new IllegalStateException("Aucune structure active sélectionnée (en-tête X-Structure-Id manquant)");
+        }
+        String url = fileStorageService.store(file, structureId);
+        return ResponseEntity.ok(Map.of("url", url));
+    }
+
+
+    @PatchMapping("/{id}")
+public ResponseEntity<LivrableResponse> updateLivrable(
+        @PathVariable UUID id, @RequestBody UpdateLivrableRequest request) {
+    return ResponseEntity.ok(livrableService.updateLivrable(id, request));
+}
+
+@DeleteMapping("/{id}")
+public ResponseEntity<Void> deleteLivrable(@PathVariable UUID id) {
+    livrableService.deleteLivrable(id);
+    return ResponseEntity.noContent().build();
+}
 }
