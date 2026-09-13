@@ -23,6 +23,17 @@ import sn.jappo.jappo_backend.user.dto.RegisterRequest;
 import sn.jappo.jappo_backend.user.entity.User;
 import sn.jappo.jappo_backend.user.repository.UserRepository;
 
+
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
+import com.google.api.client.http.javanet.NetHttpTransport;
+import com.google.api.client.json.gson.GsonFactory;
+import org.springframework.beans.factory.annotation.Value;
+
+import java.security.GeneralSecurityException;
+import java.io.IOException;
+import java.util.Collections;
+
 @Service
 public class AuthService {
 
@@ -33,12 +44,16 @@ public class AuthService {
     private final ProjetRepository projetRepository;
     private final JwtService jwtService;
 
+    @Value("${app.google.client-id}")
+private String googleClientId;
+
     public AuthService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             EmailVerificationService emailVerificationService,
             MembreStructureRepository membreStructureRepository,
             ProjetRepository projetRepository,
+        
             JwtService jwtService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -46,6 +61,7 @@ public class AuthService {
         this.membreStructureRepository = membreStructureRepository;
         this.projetRepository = projetRepository;
         this.jwtService = jwtService;
+        
     }
 
     @Transactional
@@ -77,6 +93,11 @@ public class AuthService {
 
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new  BadCredentialsException("Email ou mot de passe incorrect"));
+        if (user.getPassword() == null) {
+    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+            "Ce compte a été créé avec Google. Utilisez le bouton \"Se connecter avec Google\".");
+}
+
 
         if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new BadCredentialsException("Email ou mot de passe incorrect");
@@ -211,4 +232,70 @@ public class AuthService {
         projetRepository.save(projet);
     }
 }
+
+
+/** Connexion Google — le compte doit déjà exister (utilisateur déjà invité). */
+@Transactional
+public User loginGoogle(String idTokenString) {
+    GoogleIdToken.Payload payload = verifierTokenGoogle(idTokenString);
+    String email = payload.getEmail();
+
+    User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Aucun compte associé à cet email. Vous devez d'abord être invité par une structure."
+            ));
+
+    if (!user.isEmailVerified()) {
+        user.setEmailVerified(true);
+        userRepository.save(user);
+    }
+
+    return user;
+}
+
+/** Inscription Google — utilisée pour créer le compte d'un fondateur de structure. */
+@Transactional
+public User inscriptionGoogle(String idTokenString) {
+    GoogleIdToken.Payload payload = verifierTokenGoogle(idTokenString);
+    String email = payload.getEmail();
+    String prenom = (String) payload.get("given_name");
+    String nom = (String) payload.get("family_name");
+
+    return userRepository.findByEmail(email)
+            .map(existant -> {
+                if (!existant.isEmailVerified()) {
+                    existant.setEmailVerified(true);
+                    userRepository.save(existant);
+                }
+                return existant;
+            })
+            .orElseGet(() -> {
+                User nouveau = new User();
+                nouveau.setEmail(email);
+                nouveau.setPrenom(prenom);
+                nouveau.setNom(nom);
+                nouveau.setPassword(null);
+                nouveau.setEmailVerified(true);
+                return userRepository.save(nouveau);
+            });
+}
+
+private GoogleIdToken.Payload verifierTokenGoogle(String idTokenString) {
+    try {
+        GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(
+                new NetHttpTransport(), GsonFactory.getDefaultInstance())
+                .setAudience(Collections.singletonList(googleClientId))
+                .build();
+
+        GoogleIdToken idToken = verifier.verify(idTokenString);
+        if (idToken == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Jeton Google invalide.");
+        }
+        return idToken.getPayload();
+    } catch (GeneralSecurityException | IOException e) {
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Impossible de vérifier le jeton Google.");
+    }
+}
+
 }

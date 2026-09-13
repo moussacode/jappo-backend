@@ -49,7 +49,7 @@ public class SecurityConfig {
 
                 // Routes publiques d'authentification et d'invitation
                 .requestMatchers(
-    "/api/auth/login", "/api/auth/register", "/api/auth/invitation-info",
+    "/api/auth/login", "/api/auth/register", "/api/auth/invitation-info", "/api/auth/google","/api/auth/google/inscription",
     "/api/auth/accepter-invitation", "/api/auth/forgot-password", "/api/auth/reset-password"
 ).permitAll()
 .requestMatchers("/api/auth/**").authenticated()
