@@ -19,6 +19,8 @@ import sn.jappo.jappo_backend.projet.dto.CreateProjetRequest;
 import sn.jappo.jappo_backend.projet.dto.ProjetResponse;
 import sn.jappo.jappo_backend.projet.service.ProjetService;
 
+import sn.jappo.jappo_backend.projet.dto.PromouvoirProjetRequest;
+
 @RestController
 @RequestMapping("/api/projets")
 public class ProjetController {
@@ -74,5 +76,12 @@ public ResponseEntity<ProjetResponse> updateProjet(
 public ResponseEntity<Void> archiverProjet(@PathVariable UUID id) {
     projetService.archiverProjet(id);
     return ResponseEntity.noContent().build();
+}
+
+
+@PostMapping("/{id}/promouvoir")
+public ResponseEntity<ProjetResponse> promouvoirProjet(
+        @PathVariable UUID id, @RequestBody PromouvoirProjetRequest request) {
+    return ResponseEntity.ok(projetService.promouvoirProjet(id, request));
 }
 }

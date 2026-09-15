@@ -17,7 +17,9 @@ import sn.jappo.jappo_backend.mission.entity.MissionCohorte;
 import sn.jappo.jappo_backend.mission.entity.MissionProjet;
 import sn.jappo.jappo_backend.mission.entity.PrioriteMission;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
+import sn.jappo.jappo_backend.mission.entity.MissionModele;
 import sn.jappo.jappo_backend.mission.repository.MissionCohorteRepository;
+import sn.jappo.jappo_backend.mission.repository.MissionModeleRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
 import sn.jappo.jappo_backend.projet.entity.Projet;
 import sn.jappo.jappo_backend.projet.repository.ProjetRepository;
@@ -30,6 +32,7 @@ import sn.jappo.jappo_backend.user.repository.UserRepository;
 public class MissionService {
 
     private final MissionCohorteRepository missionCohorteRepository;
+    private final MissionModeleRepository missionModeleRepository;
     private final MissionProjetRepository missionProjetRepository;
     private final StructureRepository structureRepository;
     private final CohorteRepository cohorteRepository;
@@ -38,6 +41,7 @@ public class MissionService {
 
     public MissionService(
             MissionCohorteRepository missionCohorteRepository,
+            MissionModeleRepository missionModeleRepository,
             MissionProjetRepository missionProjetRepository,
             StructureRepository structureRepository,
             CohorteRepository cohorteRepository,
@@ -45,6 +49,7 @@ public class MissionService {
             UserRepository userRepository
     ) {
         this.missionCohorteRepository = missionCohorteRepository;
+        this.missionModeleRepository = missionModeleRepository;
         this.missionProjetRepository = missionProjetRepository;
         this.structureRepository = structureRepository;
         this.cohorteRepository = cohorteRepository;
@@ -66,6 +71,21 @@ public class MissionService {
         missionCohorte.setDateEcheance(request.dateEcheance());
         missionCohorte.setPriorite(request.priorite() != null ? request.priorite() : PrioriteMission.MOYENNE);
         missionCohorte.setStructure(structure);
+
+        // Gestion du lien avec un modèle de catalogue
+        if (Boolean.TRUE.equals(request.enregistrerCommeModele())) {
+            MissionModele nouveauModele = new MissionModele();
+            nouveauModele.setTitre(request.titre().trim());
+            nouveauModele.setDescription(request.description() != null ? request.description().trim() : null);
+            nouveauModele.setPrioriteParDefaut(request.priorite() != null ? request.priorite() : PrioriteMission.MOYENNE);
+            nouveauModele.setStructure(structure);
+            MissionModele savedModele = missionModeleRepository.save(nouveauModele);
+            missionCohorte.setModele(savedModele);
+        } else if (request.modeleId() != null) {
+            MissionModele modeleExistant = missionModeleRepository.findByIdAndStructureId(request.modeleId(), activeStructureId)
+                    .orElse(null);
+            missionCohorte.setModele(modeleExistant);
+        }
 
         if (request.cohorteId() != null) {
             Cohorte cohorte = cohorteRepository.findByIdAndStructureId(request.cohorteId(), activeStructureId)
@@ -95,7 +115,8 @@ public class MissionService {
             List<Projet> projets = projetRepository.findAllByCohorteIdAndStructureId(request.cohorteId(), activeStructureId);
 
             if (projets.isEmpty()) {
-                throw new IllegalArgumentException("Impossible d'attribuer la mission : cette cohorte ne contient aucun projet pour le moment.");
+                // Cohorte sans projets pour le moment (ex: wizard étape 3)
+                return List.of(mapCohorteToResponse(savedCohorteMission));
             }
 
             for (Projet p : projets) {
@@ -110,6 +131,33 @@ public class MissionService {
         }
 
         return instancesCrees.stream().map(this::mapToResponse).toList();
+    }
+
+    private MissionResponse mapCohorteToResponse(MissionCohorte mc) {
+        return new MissionResponse(
+                mc.getId(),                                              // ID
+                mc.getId(),                                              // missionCohorteId
+                mc.getTitre(),
+                mc.getDescription(),
+                mc.getDateEcheance(),
+                StatutMission.A_FAIRE,
+                mc.getPriorite(),
+                null,                                                    // projetId
+                null,                                                    // nomProjet
+                mc.getCohorte() != null ? mc.getCohorte().getId() : null,
+                mc.getCohorte() != null ? mc.getCohorte().getNom() : null,
+                null,                                                    // entrepreneurId
+                null,                                                    // nomEntrepreneur
+                null,                                                    // assigneAId
+                null,                                                    // nomAssigneA
+                null,                                                    // creeParId
+                null,                                                    // nomCreePar
+                mc.getStructure() != null ? mc.getStructure().getId() : null,
+                mc.getDateCreation(),
+                null,                                                    // dateModification
+                1,                                                       // nombreLivrablesAttendus
+                0                                                        // nombreLivrablesDeposes
+        );
     }
 
     @Transactional(readOnly = true)
@@ -175,7 +223,7 @@ public class MissionService {
         List<MissionProjet> missions = missionProjetRepository.findAllByProjetIdAndStructureId(projetId, structureId);
         if (missions.isEmpty()) return;
 
-        long validees = missions.stream().filter(m -> m.getStatut() == StatutMission.VALIDEE).count();
+        long validees = missions.stream().filter(m -> m.getStatut() == StatutMission.VALIDE || m.getStatut() == StatutMission.VALIDEE).count();
         int score = (int) Math.round(((double) validees / missions.size()) * 100);
 
         projetRepository.findByIdAndStructureId(projetId, structureId).ifPresent(projet -> {
@@ -196,8 +244,23 @@ public class MissionService {
         MissionCohorte mc = mp.getMissionCohorte();
 
         String nomProjet = mp.getProjet() != null ? mp.getProjet().getNom() : null;
-        UUID cohorteId = (mc != null && mc.getCohorte() != null) ? mc.getCohorte().getId() : null;
-        String nomCohorte = (mc != null && mc.getCohorte() != null) ? mc.getCohorte().getNom() : null;
+        
+        // Cohorte déduite depuis la consigne cohorte ou directement depuis le projet
+        Cohorte cohorte = (mc != null && mc.getCohorte() != null) ? mc.getCohorte()
+                : (mp.getProjet() != null ? mp.getProjet().getCohorte() : null);
+        UUID cohorteId = cohorte != null ? cohorte.getId() : null;
+        String nomCohorte = cohorte != null ? cohorte.getNom() : null;
+
+        // Entrepreneur porteur du projet
+        UUID entrepreneurId = (mp.getProjet() != null && mp.getProjet().getEntrepreneur() != null)
+                ? mp.getProjet().getEntrepreneur().getId() : null;
+        String nomEntrepreneur = null;
+        if (mp.getProjet() != null && mp.getProjet().getEntrepreneur() != null) {
+            String p = mp.getProjet().getEntrepreneur().getPrenom() != null ? mp.getProjet().getEntrepreneur().getPrenom() : "";
+            String n = mp.getProjet().getEntrepreneur().getNom() != null ? mp.getProjet().getEntrepreneur().getNom() : "";
+            nomEntrepreneur = (p + " " + n).trim();
+            if (nomEntrepreneur.isEmpty()) nomEntrepreneur = null;
+        }
 
         String nomAssigneA = null;
         if (mp.getAssigneA() != null) {
@@ -222,6 +285,8 @@ public class MissionService {
                 nomProjet,
                 cohorteId,
                 nomCohorte,
+                entrepreneurId,
+                nomEntrepreneur,
                 mp.getAssigneA() != null ? mp.getAssigneA().getId() : null,
                 nomAssigneA,
                 null,                                                    // creeParId (si applicable)

@@ -11,6 +11,8 @@ import sn.jappo.jappo_backend.cohorte.dto.UpdateCohorteRequest;
 import sn.jappo.jappo_backend.cohorte.repository.CohorteRepository;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
+import  sn.jappo.jappo_backend.cohorte.entity.PhaseParcours;
+
 
 import java.util.List;
 import java.util.UUID;
@@ -54,6 +56,17 @@ public class CohorteService {
                 .toList();
     }
 
+     @Transactional(readOnly = true)
+public List<CohorteResponse> getActiveCohortesForActiveStructure() {
+    UUID activeStructureId = getRequiredTenantId();
+    return cohorteRepository.findAllByStructureId(activeStructureId)
+            .stream()
+            .filter(cohorte -> cohorte.getStatut() != StatutCohorte.ARCHIVEE) // Exclusion stricte
+            .map(this::mapToResponse)
+            .toList();
+}
+
+
     // NOUVEAU : Récupérer une cohorte par son ID pour la structure active
     @Transactional(readOnly = true)
     public CohorteResponse getCohorteById(UUID id) {
@@ -79,6 +92,7 @@ public class CohorteService {
                 cohorte.getDateDebut(),
                 cohorte.getDateFin(),
                 cohorte.getStatut(),
+                cohorte.getPhase(),
                 cohorte.getStructure().getId()
         );
     }
@@ -96,6 +110,7 @@ public CohorteResponse updateCohorte(UUID id, UpdateCohorteRequest request) {
     if (request.dateDebut() != null) cohorte.setDateDebut(request.dateDebut());
     if (request.dateFin() != null) cohorte.setDateFin(request.dateFin());
     if (request.statut() != null) cohorte.setStatut(request.statut());
+    if (request.phase() != null) cohorte.setPhase(request.phase());
 
     return mapToResponse(cohorteRepository.save(cohorte));
 }

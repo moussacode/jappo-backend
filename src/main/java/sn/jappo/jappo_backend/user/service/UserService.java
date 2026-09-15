@@ -160,4 +160,13 @@ public InvitationResultResponse inviterEntrepreneurs(InviterEntrepreneurRequest 
                 membre.getDateInvitation()
         );
     }
+
+    @Transactional
+    public User updateProfile(UUID userId, sn.jappo.jappo_backend.user.dto.UpdateUserProfileRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable"));
+        user.setPrenom(request.prenom().trim());
+        user.setNom(request.nom().trim());
+        return userRepository.save(user);
+    }
 }

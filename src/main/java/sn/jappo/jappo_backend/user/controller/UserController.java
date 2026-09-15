@@ -11,6 +11,11 @@ import sn.jappo.jappo_backend.user.dto.InviterEntrepreneurRequest;
 import sn.jappo.jappo_backend.user.service.UserService;
 import sn.jappo.jappo_backend.user.dto.EntrepreneurResponse;
 
+import org.springframework.security.core.Authentication;
+import sn.jappo.jappo_backend.user.dto.UpdateUserProfileRequest;
+import sn.jappo.jappo_backend.user.dto.UserResponse;
+import sn.jappo.jappo_backend.user.entity.User;
+
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
@@ -19,6 +24,20 @@ public class UserController {
 
     public UserController(UserService userService) {
         this.userService = userService;
+    }
+
+    /**
+     * Mettre à jour le profil de l'utilisateur connecté (prénom, nom)
+     * PATCH /api/users/me
+     */
+    @PatchMapping("/me")
+    public ResponseEntity<UserResponse> updateProfile(
+            @Valid @RequestBody UpdateUserProfileRequest request,
+            Authentication authentication
+    ) {
+        User user = (User) authentication.getPrincipal();
+        User updatedUser = userService.updateProfile(user.getId(), request);
+        return ResponseEntity.ok(UserResponse.from(updatedUser));
     }
 
     /**

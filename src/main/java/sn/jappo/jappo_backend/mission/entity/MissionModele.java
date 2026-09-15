@@ -1,7 +1,9 @@
-package sn.jappo.jappo_backend.cohorte.entity;
+package sn.jappo.jappo_backend.mission.entity;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
+
+import org.hibernate.annotations.CreationTimestamp;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -20,34 +22,28 @@ import sn.jappo.jappo_backend.structure.entity.Structure;
 
 @Getter
 @Setter
-@Table(name = "cohortes")
+@Table(name = "missions_modeles")
 @Entity
-public class Cohorte {
+public class MissionModele {
 
     @Id
     @GeneratedValue
     private UUID id;
 
     @Column(nullable = false, length = 150)
-    private String nom;
+    private String titre;
 
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    private LocalDate dateDebut;
-
-    private LocalDate dateFin;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private StatutCohorte statut = StatutCohorte.PLANIFIEE;
-
-
-    @Enumerated(EnumType.STRING)
-@Column(nullable = false)
-private PhaseParcours phase = PhaseParcours.PRE_INCUBATION;
+    private PrioriteMission prioriteParDefaut = PrioriteMission.MOYENNE;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "structure_id", nullable = false)
     private Structure structure;
+
+    @CreationTimestamp
+    private LocalDateTime dateCreation;
 }

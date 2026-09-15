@@ -64,8 +64,26 @@ public class InvitationService {
             return userRepository.save(newUser);
         });
 
-        if (membreStructureRepository.existsByUserAndStructure(user, structure)) {
-            throw new IllegalArgumentException("Cet utilisateur fait déjà partie de cette structure.");
+        var existantOpt = membreStructureRepository.findByUserIdAndStructureId(user.getId(), structureId);
+        if (existantOpt.isPresent()) {
+            MembreStructure existant = existantOpt.get();
+            if (existant.getStatut() == StatutMembre.ACCEPTE) {
+                throw new IllegalArgumentException("Cet utilisateur fait déjà partie de cette structure en tant que membre actif.");
+            }
+            String token = UUID.randomUUID().toString();
+            existant.setRole(role);
+            existant.setInvitationToken(token);
+            existant.setInvitationTokenExpiresAt(LocalDateTime.now().plusDays(7));
+            existant.setDateInvitation(LocalDateTime.now());
+            membreStructureRepository.save(existant);
+
+            emailService.sendInvitationEmail(
+                    email,
+                    user.getPrenom() != null ? user.getPrenom() : "Futur membre",
+                    token,
+                    structure.getNom()
+            );
+            return;
         }
 
         String token = UUID.randomUUID().toString();
@@ -160,6 +178,63 @@ public class InvitationService {
     // Méthode utilitaire pour vérifier si un membre est le propriétaire
     public boolean estProprietaire(Structure structure, User user) {
         return structure.getProprietaire() != null && structure.getProprietaire().getId().equals(user.getId());
+    }
+
+    // 6. Renvoyer l'invitation à un membre en attente / expirée
+    @Transactional
+    public void renvoyerInvitation(UUID structureId, UUID membreUserId) {
+        Structure structure = structureRepository.findById(structureId)
+                .orElseThrow(() -> new IllegalArgumentException("Structure introuvable"));
+
+        MembreStructure membre = membreStructureRepository.findByUserIdAndStructureId(membreUserId, structureId)
+                .orElseThrow(() -> new IllegalArgumentException("Membre introuvable."));
+
+        if (membre.getStatut() == StatutMembre.ACCEPTE) {
+            throw new IllegalArgumentException("Ce membre a déjà accepté son invitation.");
+        }
+
+        String token = UUID.randomUUID().toString();
+        membre.setInvitationToken(token);
+        membre.setInvitationTokenExpiresAt(LocalDateTime.now().plusDays(7));
+        membre.setDateInvitation(LocalDateTime.now());
+        membreStructureRepository.save(membre);
+
+        User user = membre.getUser();
+        emailService.sendInvitationEmail(
+                user.getEmail(),
+                user.getPrenom() != null ? user.getPrenom() : "Futur membre",
+                token,
+                structure.getNom()
+        );
+    }
+
+    // 7. Annuler une invitation en attente / expirée
+    @Transactional
+    public void annulerInvitation(UUID structureId, UUID membreUserId) {
+        MembreStructure membre = membreStructureRepository.findByUserIdAndStructureId(membreUserId, structureId)
+                .orElseThrow(() -> new IllegalArgumentException("Invitation introuvable."));
+
+        if (membre.getStatut() == StatutMembre.ACCEPTE) {
+            throw new IllegalArgumentException("Impossible d'annuler une invitation déjà acceptée.");
+        }
+
+        membreStructureRepository.delete(membre);
+    }
+
+    // 8. Retirer un membre de la structure (avec protection du propriétaire)
+    @Transactional
+    public void retirerMembre(UUID structureId, UUID membreUserId) {
+        Structure structure = structureRepository.findById(structureId)
+                .orElseThrow(() -> new IllegalArgumentException("Structure introuvable"));
+
+        if (structure.getProprietaire() != null && structure.getProprietaire().getId().equals(membreUserId)) {
+            throw new IllegalArgumentException("Le propriétaire de la structure ne peut pas être retiré.");
+        }
+
+        MembreStructure membre = membreStructureRepository.findByUserIdAndStructureId(membreUserId, structureId)
+                .orElseThrow(() -> new IllegalArgumentException("Membre introuvable dans cette structure."));
+
+        membreStructureRepository.delete(membre);
     }
 
     private String construireUrlLien(String token) {

@@ -52,6 +52,10 @@ public class MissionCohorte {
     @JoinColumn(name = "structure_id", nullable = false)
     private Structure structure;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "modele_id")
+    private MissionModele modele;
+
     @CreationTimestamp
     private LocalDateTime dateCreation;
 }

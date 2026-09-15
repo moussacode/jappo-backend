@@ -113,6 +113,8 @@ public Structure updateStructure(UUID structureId, UpdateStructureRequest reques
             .orElseThrow(() -> new RuntimeException("Structure introuvable"));
 
     if (request.nom() != null) structure.setNom(request.nom());
+    if (request.type() != null) structure.setType(request.type());
+    if (request.pays() != null) structure.setPays(request.pays());
     if (request.description() != null) structure.setDescription(request.description());
     if (request.email() != null) structure.setEmail(request.email());
     if (request.telephone() != null) structure.setTelephone(request.telephone());

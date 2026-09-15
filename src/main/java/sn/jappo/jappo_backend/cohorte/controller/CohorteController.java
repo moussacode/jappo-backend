@@ -31,6 +31,10 @@ public class CohorteController {
     public ResponseEntity<List<CohorteResponse>> getMyCohortes() {
         return ResponseEntity.ok(cohorteService.getCohortesForActiveStructure());
     }
+    @GetMapping("/cohorte-active")
+    public ResponseEntity<List<CohorteResponse>> getMyCohortesActive() {
+        return ResponseEntity.ok(cohorteService.getActiveCohortesForActiveStructure());
+    }
 
     // NOUVEAU : Endpoint GET /api/cohortes/{id}
     @GetMapping("/{id}")

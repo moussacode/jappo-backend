@@ -16,7 +16,9 @@ public record CreateMissionRequest(
         PrioriteMission priorite,
         UUID cohorteId,   // Si la mission est diffusée à toute une cohorte
         UUID projetId,    // Optionnel : si ciblée sur un seul projet/startup
-        UUID assigneAId   // Optionnel : si assignée à un coach ou membre spécifique
+        UUID assigneAId,  // Optionnel : si assignée à un coach ou membre spécifique
+        UUID modeleId,    // Optionnel : si issue d'un modèle du catalogue
+        Boolean enregistrerCommeModele // Optionnel : sauvegarder comme modèle réutilisable
 ) {
     public CreateMissionRequest {
         if (priorite == null) {
