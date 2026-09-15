@@ -1,5 +1,6 @@
 package sn.jappo.jappo_backend.livrable.service;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,6 +30,9 @@ import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
 import sn.jappo.jappo_backend.mission.service.MissionService;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
+import sn.jappo.jappo_backend.events.DeliverableSubmittedEvent;
+import sn.jappo.jappo_backend.events.DeliverableEvaluatedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 
 @Service
 public class LivrableService {
@@ -37,17 +41,20 @@ public class LivrableService {
     private final MissionProjetRepository missionProjetRepository;
     private final StructureRepository structureRepository;
     private final MissionService missionService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public LivrableService(
             LivrableRepository livrableRepository,
             MissionProjetRepository missionProjetRepository,
             StructureRepository structureRepository,
-            MissionService missionService
+            MissionService missionService,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.livrableRepository = livrableRepository;
         this.missionProjetRepository = missionProjetRepository;
         this.structureRepository = structureRepository;
         this.missionService = missionService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -87,6 +94,21 @@ public class LivrableService {
         if (missionProjet.getStatut() == StatutMission.A_FAIRE || missionProjet.getStatut() == StatutMission.A_REVOIR) {
             missionService.updateStatut(missionProjet.getId(), new UpdateStatutMissionRequest(StatutMission.SOUMIS));
         }
+
+        // Publier l'événement DELIVERABLE_SUBMITTED
+        UUID entrepreneurId = missionProjet.getProjet().getEntrepreneur() != null 
+                ? missionProjet.getProjet().getEntrepreneur().getId() 
+                : null;
+        
+        eventPublisher.publishEvent(new DeliverableSubmittedEvent(
+                activeStructureId,
+                saved.getId(),
+                missionProjet.getId(),
+                missionProjet.getProjet().getId(),
+                entrepreneurId,
+                saved.getNumeroVersion() != null ? saved.getNumeroVersion() : 1,
+                Instant.now()
+        ));
 
         return mapToResponse(saved);
     }
@@ -155,6 +177,21 @@ public class LivrableService {
         // Mettre à jour le statut global de la mission
         synchroniserStatutMission(saved.getMissionProjet().getId(), activeStructureId);
 
+        // Publier l'événement DELIVERABLE_SUBMITTED pour la nouvelle version
+        UUID entrepreneurId = saved.getProjet().getEntrepreneur() != null 
+                ? saved.getProjet().getEntrepreneur().getId() 
+                : null;
+        
+        eventPublisher.publishEvent(new DeliverableSubmittedEvent(
+                activeStructureId,
+                saved.getId(),
+                saved.getMissionProjet().getId(),
+                saved.getProjet().getId(),
+                entrepreneurId,
+                nouvelleVersionNum,
+                Instant.now()
+        ));
+
         return mapToResponse(saved);
     }
 
@@ -164,6 +201,9 @@ public class LivrableService {
 
         Livrable livrable = livrableRepository.findByIdAndStructureId(id, activeStructureId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Livrable introuvable"));
+
+        // Capturer l'ancien statut avant modification
+        StatutLivrable ancienStatut = livrable.getStatut();
 
         // Rétrocompatibilité : s'assurer qu'au moins une version existe
         if (livrable.getVersions() == null || livrable.getVersions().isEmpty()) {
@@ -209,6 +249,22 @@ public class LivrableService {
         Livrable saved = livrableRepository.save(livrable);
 
         synchroniserStatutMission(livrable.getMissionProjet().getId(), activeStructureId);
+
+        // Publier l'événement DELIVERABLE_EVALUATED uniquement si le statut a changé
+        if (ancienStatut != request.statut()) {
+            UUID entrepreneurId = saved.getProjet().getEntrepreneur() != null 
+                    ? saved.getProjet().getEntrepreneur().getId() 
+                    : null;
+            
+            eventPublisher.publishEvent(new DeliverableEvaluatedEvent(
+                    activeStructureId,
+                    saved.getId(),
+                    saved.getProjet().getId(),
+                    entrepreneurId,
+                    request.statut(),
+                    Instant.now()
+            ));
+        }
 
         return mapToResponse(saved);
     }

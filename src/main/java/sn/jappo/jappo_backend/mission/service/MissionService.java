@@ -6,6 +6,7 @@ import java.util.UUID;
 import sn.jappo.jappo_backend.mission.dto.UpdateMissionRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
 
 import sn.jappo.jappo_backend.cohorte.entity.Cohorte;
 import sn.jappo.jappo_backend.cohorte.repository.CohorteRepository;
@@ -27,6 +28,7 @@ import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
 import sn.jappo.jappo_backend.user.entity.User;
 import sn.jappo.jappo_backend.user.repository.UserRepository;
+import sn.jappo.jappo_backend.events.MissionStatusChangedEvent;
 
 @Service
 public class MissionService {
@@ -38,6 +40,7 @@ public class MissionService {
     private final CohorteRepository cohorteRepository;
     private final ProjetRepository projetRepository;
     private final UserRepository userRepository;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     public MissionService(
             MissionCohorteRepository missionCohorteRepository,
@@ -46,7 +49,8 @@ public class MissionService {
             StructureRepository structureRepository,
             CohorteRepository cohorteRepository,
             ProjetRepository projetRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            org.springframework.context.ApplicationEventPublisher eventPublisher
     ) {
         this.missionCohorteRepository = missionCohorteRepository;
         this.missionModeleRepository = missionModeleRepository;
@@ -55,6 +59,7 @@ public class MissionService {
         this.cohorteRepository = cohorteRepository;
         this.projetRepository = projetRepository;
         this.userRepository = userRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -134,8 +139,11 @@ public class MissionService {
     }
 
     private MissionResponse mapCohorteToResponse(MissionCohorte mc) {
+        UUID cohorteId = mc.getCohorte() != null ? mc.getCohorte().getId() : null;
+        String nomCohorte = mc.getCohorte() != null ? mc.getCohorte().getNom() : null;
+        
         return new MissionResponse(
-                mc.getId(),                                              // ID
+                mc.getId(),                                              // ID (MissionCohorte ID pour les missions sans instance)
                 mc.getId(),                                              // missionCohorteId
                 mc.getTitre(),
                 mc.getDescription(),
@@ -144,8 +152,8 @@ public class MissionService {
                 mc.getPriorite(),
                 null,                                                    // projetId
                 null,                                                    // nomProjet
-                mc.getCohorte() != null ? mc.getCohorte().getId() : null,
-                mc.getCohorte() != null ? mc.getCohorte().getNom() : null,
+                cohorteId,                                               // cohorteId
+                nomCohorte,                                              // nomCohorte
                 null,                                                    // entrepreneurId
                 null,                                                    // nomEntrepreneur
                 null,                                                    // assigneAId
@@ -163,10 +171,29 @@ public class MissionService {
     @Transactional(readOnly = true)
     public List<MissionResponse> getMissionsForActiveStructure() {
         UUID activeStructureId = getRequiredTenantId();
-        return missionProjetRepository.findAllByStructureId(activeStructureId)
+        
+        // Récupérer toutes les instances de missions (MissionProjet)
+        List<MissionResponse> missionProjetResponses = missionProjetRepository.findAllByStructureId(activeStructureId)
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
+        
+        // Récupérer les modèles de missions (MissionCohorte) qui n'ont pas encore d'instances
+        // Cela permet de voir les missions créées pour des cohortes sans projets
+        List<MissionCohorte> allMissionCohortes = missionCohorteRepository.findAllByStructureId(activeStructureId);
+        
+        // Filtrer pour ne garder que les MissionCohorte qui n'ont pas d'instances MissionProjet
+        List<MissionResponse> missionCohorteSansInstances = allMissionCohortes.stream()
+                .filter(mc -> missionProjetRepository.findAllByMissionCohorteIdAndStructureId(mc.getId(), activeStructureId).isEmpty())
+                .map(this::mapCohorteToResponse)
+                .toList();
+        
+        // Fusionner les deux listes
+        List<MissionResponse> allResponses = new ArrayList<>();
+        allResponses.addAll(missionProjetResponses);
+        allResponses.addAll(missionCohorteSansInstances);
+        
+        return allResponses;
     }
 
     @Transactional(readOnly = true)
@@ -195,11 +222,28 @@ public class MissionService {
         MissionProjet mp = missionProjetRepository.findByIdAndStructureId(missionProjetId, activeStructureId)
                 .orElseThrow(() -> new RuntimeException("Mission introuvable pour ce projet"));
 
-        mp.setStatut(request.statut());
+        // Capturer l'ancien statut AVANT modification
+        StatutMission ancienStatut = mp.getStatut();
+        StatutMission nouveauStatut = request.statut();
+
+        mp.setStatut(nouveauStatut);
         MissionProjet saved = missionProjetRepository.save(mp);
 
         // Recalcul automatique du score de maturité du projet
         recalculerMaturiteProjet(mp.getProjet().getId(), activeStructureId);
+
+        // Publier MISSION_STATUS_CHANGED uniquement si le statut a réellement changé
+        if (ancienStatut != nouveauStatut) {
+            UUID projetId = mp.getProjet() != null ? mp.getProjet().getId() : null;
+            eventPublisher.publishEvent(new MissionStatusChangedEvent(
+                    activeStructureId,
+                    saved.getId(),
+                    projetId,
+                    ancienStatut,
+                    nouveauStatut,
+                    java.time.Instant.now()
+            ));
+        }
 
         return mapToResponse(saved);
     }
@@ -324,4 +368,45 @@ public void deleteMission(UUID missionProjetId) {
             .orElseThrow(() -> new RuntimeException("Mission introuvable"));
     missionProjetRepository.delete(mp);
 }
+
+    /**
+     * Synchronise les missions d'une cohorte vers un projet spécifique.
+     * Crée uniquement les instances MissionProjet manquantes pour éviter les doublons.
+     */
+    @Transactional
+    public void synchroniserMissionsCohorteVersProjet(Projet projet, Cohorte cohorte, Structure structure) {
+        if (cohorte == null || projet == null) {
+            return;
+        }
+
+        UUID structureId = structure.getId();
+        UUID projetId = projet.getId();
+        UUID cohorteId = cohorte.getId();
+
+        // Récupérer toutes les MissionCohorte de cette cohorte
+        List<MissionCohorte> missionsCohorte = missionCohorteRepository.findAllByCohorteIdAndStructureId(cohorteId, structureId);
+
+        // Pour chaque MissionCohorte, vérifier si une MissionProjet existe déjà pour ce projet
+        for (MissionCohorte mc : missionsCohorte) {
+            // Vérifier si une instance existe déjà pour ce couple (missionCohorte, projet)
+            boolean existeDeja = missionProjetRepository.existsByMissionCohorteIdAndProjetIdAndStructureId(
+                    mc.getId(), projetId, structureId);
+
+            if (!existeDeja) {
+                // Créer l'instance manquante
+                MissionProjet mp = new MissionProjet();
+                mp.setMissionCohorte(mc);
+                mp.setProjet(projet);
+                mp.setStatut(StatutMission.A_FAIRE);
+                mp.setStructure(structure);
+
+                // Assigner à l'entrepreneur du projet par défaut
+                if (projet.getEntrepreneur() != null) {
+                    mp.setAssigneA(projet.getEntrepreneur());
+                }
+
+                missionProjetRepository.save(mp);
+            }
+        }
+    }
 }

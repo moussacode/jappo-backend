@@ -22,6 +22,7 @@ import sn.jappo.jappo_backend.structure.repository.MembreStructureRepository;
 import sn.jappo.jappo_backend.user.dto.RegisterRequest;
 import sn.jappo.jappo_backend.user.entity.User;
 import sn.jappo.jappo_backend.user.repository.UserRepository;
+import sn.jappo.jappo_backend.mission.service.MissionService;
 
 
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
@@ -43,6 +44,7 @@ public class AuthService {
     private final MembreStructureRepository membreStructureRepository;
     private final ProjetRepository projetRepository;
     private final JwtService jwtService;
+    private final MissionService missionService;
 
     @Value("${app.google.client-id}")
 private String googleClientId;
@@ -54,13 +56,15 @@ private String googleClientId;
             MembreStructureRepository membreStructureRepository,
             ProjetRepository projetRepository,
         
-            JwtService jwtService) {
+            JwtService jwtService,
+            MissionService missionService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailVerificationService = emailVerificationService;
         this.membreStructureRepository = membreStructureRepository;
         this.projetRepository = projetRepository;
         this.jwtService = jwtService;
+        this.missionService = missionService;
         
     }
 
@@ -195,7 +199,7 @@ private String googleClientId;
 
         // 3. Création automatique du projet "Mon Projet" si l'invité est ENTREPRENEUR
         if (membre.getRole() == RoleMembreStructure.ENTREPRENEUR) {
-            creerProjetParDefautSiInexistant(user, membre.getStructure());
+            creerProjetParDefautSiInexistant(user, membre);
         }
 
         // 4. Génération du JWT de connexion
@@ -203,7 +207,8 @@ private String googleClientId;
         return new AuthResponse(jwtToken, user.getId(), user.getNom(), user.getEmail());
     }
 
-    private void creerProjetParDefautSiInexistant(User entrepreneur, Structure structure) {
+    private void creerProjetParDefautSiInexistant(User entrepreneur, MembreStructure membre) {
+    Structure structure = membre.getStructure();
     boolean existe = projetRepository.existsByEntrepreneurIdAndStructureId(entrepreneur.getId(), structure.getId());
 
     if (!existe) {
@@ -228,8 +233,18 @@ private String googleClientId;
         projet.setScoreMaturite(0);
         projet.setEntrepreneur(entrepreneur);
         projet.setStructure(structure);
+        
+        // Rattacher le projet à la cohorte du membre si elle existe
+        if (membre.getCohorte() != null) {
+            projet.setCohorte(membre.getCohorte());
+        }
 
-        projetRepository.save(projet);
+        Projet projetSauvegarde = projetRepository.save(projet);
+        
+        // Synchroniser les missions de la cohorte vers le projet
+        if (membre.getCohorte() != null) {
+            missionService.synchroniserMissionsCohorteVersProjet(projetSauvegarde, membre.getCohorte(), structure);
+        }
     }
 }
 

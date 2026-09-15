@@ -1,5 +1,6 @@
 package sn.jappo.jappo_backend.cohorte.service;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
@@ -9,11 +10,13 @@ import sn.jappo.jappo_backend.cohorte.entity.Cohorte;
 import sn.jappo.jappo_backend.cohorte.entity.StatutCohorte;
 import sn.jappo.jappo_backend.cohorte.dto.UpdateCohorteRequest;
 import sn.jappo.jappo_backend.cohorte.repository.CohorteRepository;
+import sn.jappo.jappo_backend.events.CohortCreatedEvent;
+import sn.jappo.jappo_backend.events.CohortCompletedEvent;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
-import  sn.jappo.jappo_backend.cohorte.entity.PhaseParcours;
+import sn.jappo.jappo_backend.cohorte.entity.PhaseParcours;
 
-
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,10 +25,16 @@ public class CohorteService {
 
     private final CohorteRepository cohorteRepository;
     private final StructureRepository structureRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public CohorteService(CohorteRepository cohorteRepository, StructureRepository structureRepository) {
+    public CohorteService(
+            CohorteRepository cohorteRepository,
+            StructureRepository structureRepository,
+            ApplicationEventPublisher eventPublisher
+    ) {
         this.cohorteRepository = cohorteRepository;
         this.structureRepository = structureRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -44,6 +53,15 @@ public class CohorteService {
         cohorte.setStructure(structure);
 
         Cohorte saved = cohorteRepository.save(cohorte);
+
+        // Publier COHORT_CREATED après sauvegarde réussie (ID généré garanti)
+        eventPublisher.publishEvent(new CohortCreatedEvent(
+                activeStructureId,
+                saved.getId(),
+                saved.getNom(),
+                Instant.now()
+        ));
+
         return mapToResponse(saved);
     }
 
@@ -56,24 +74,62 @@ public class CohorteService {
                 .toList();
     }
 
-     @Transactional(readOnly = true)
-public List<CohorteResponse> getActiveCohortesForActiveStructure() {
-    UUID activeStructureId = getRequiredTenantId();
-    return cohorteRepository.findAllByStructureId(activeStructureId)
-            .stream()
-            .filter(cohorte -> cohorte.getStatut() != StatutCohorte.ARCHIVEE) // Exclusion stricte
-            .map(this::mapToResponse)
-            .toList();
-}
+    @Transactional(readOnly = true)
+    public List<CohorteResponse> getActiveCohortesForActiveStructure() {
+        UUID activeStructureId = getRequiredTenantId();
+        return cohorteRepository.findAllByStructureId(activeStructureId)
+                .stream()
+                .filter(cohorte -> cohorte.getStatut() != StatutCohorte.ARCHIVEE)
+                .map(this::mapToResponse)
+                .toList();
+    }
 
-
-    // NOUVEAU : Récupérer une cohorte par son ID pour la structure active
     @Transactional(readOnly = true)
     public CohorteResponse getCohorteById(UUID id) {
         UUID activeStructureId = getRequiredTenantId();
         Cohorte cohorte = cohorteRepository.findByIdAndStructureId(id, activeStructureId)
                 .orElseThrow(() -> new RuntimeException("Cohorte introuvable ou accès non autorisé pour l'ID : " + id));
         return mapToResponse(cohorte);
+    }
+
+    @Transactional
+    public CohorteResponse updateCohorte(UUID id, UpdateCohorteRequest request) {
+        UUID activeStructureId = getRequiredTenantId();
+        Cohorte cohorte = cohorteRepository.findByIdAndStructureId(id, activeStructureId)
+                .orElseThrow(() -> new RuntimeException("Cohorte introuvable"));
+
+        // Capturer l'ancien statut pour détecter le passage en TERMINEE
+        StatutCohorte ancienStatut = cohorte.getStatut();
+
+        if (request.nom() != null) cohorte.setNom(request.nom());
+        if (request.description() != null) cohorte.setDescription(request.description());
+        if (request.dateDebut() != null) cohorte.setDateDebut(request.dateDebut());
+        if (request.dateFin() != null) cohorte.setDateFin(request.dateFin());
+        if (request.statut() != null) cohorte.setStatut(request.statut());
+        if (request.phase() != null) cohorte.setPhase(request.phase());
+
+        Cohorte saved = cohorteRepository.save(cohorte);
+
+        // Publier COHORT_COMPLETED uniquement au premier passage en TERMINEE
+        if (request.statut() == StatutCohorte.TERMINEE && ancienStatut != StatutCohorte.TERMINEE) {
+            eventPublisher.publishEvent(new CohortCompletedEvent(
+                    activeStructureId,
+                    saved.getId(),
+                    saved.getNom(),
+                    Instant.now()
+            ));
+        }
+
+        return mapToResponse(saved);
+    }
+
+    @Transactional
+    public void archiverCohorte(UUID id) {
+        UUID activeStructureId = getRequiredTenantId();
+        Cohorte cohorte = cohorteRepository.findByIdAndStructureId(id, activeStructureId)
+                .orElseThrow(() -> new RuntimeException("Cohorte introuvable"));
+        cohorte.setStatut(StatutCohorte.ARCHIVEE);
+        cohorteRepository.save(cohorte);
     }
 
     private UUID getRequiredTenantId() {
@@ -96,31 +152,4 @@ public List<CohorteResponse> getActiveCohortesForActiveStructure() {
                 cohorte.getStructure().getId()
         );
     }
-
-
-
-    @Transactional
-public CohorteResponse updateCohorte(UUID id, UpdateCohorteRequest request) {
-    UUID activeStructureId = getRequiredTenantId();
-    Cohorte cohorte = cohorteRepository.findByIdAndStructureId(id, activeStructureId)
-            .orElseThrow(() -> new RuntimeException("Cohorte introuvable"));
-
-    if (request.nom() != null) cohorte.setNom(request.nom());
-    if (request.description() != null) cohorte.setDescription(request.description());
-    if (request.dateDebut() != null) cohorte.setDateDebut(request.dateDebut());
-    if (request.dateFin() != null) cohorte.setDateFin(request.dateFin());
-    if (request.statut() != null) cohorte.setStatut(request.statut());
-    if (request.phase() != null) cohorte.setPhase(request.phase());
-
-    return mapToResponse(cohorteRepository.save(cohorte));
-}
-
-@Transactional
-public void archiverCohorte(UUID id) {
-    UUID activeStructureId = getRequiredTenantId();
-    Cohorte cohorte = cohorteRepository.findByIdAndStructureId(id, activeStructureId)
-            .orElseThrow(() -> new RuntimeException("Cohorte introuvable"));
-    cohorte.setStatut(StatutCohorte.ARCHIVEE);
-    cohorteRepository.save(cohorte);
-}
 }
