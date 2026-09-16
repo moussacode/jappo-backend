@@ -132,6 +132,37 @@ public class CohorteService {
         cohorteRepository.save(cohorte);
     }
 
+    /**
+     * Restaure une cohorte archivée.
+     * Idempotent : peut être appelé plusieurs fois sans erreur.
+     */
+    @Transactional
+    public void restaurerCohorte(UUID id) {
+        UUID activeStructureId = getRequiredTenantId();
+        Cohorte cohorte = cohorteRepository.findByIdAndStructureId(id, activeStructureId)
+                .orElseThrow(() -> new RuntimeException("Cohorte introuvable"));
+
+        if (cohorte.getStatut() != StatutCohorte.ARCHIVEE) {
+            return; // Déjà non archivée, idempotent
+        }
+
+        // Restaurer à EN_COURS par défaut (ou pourrait être un paramètre)
+        cohorte.setStatut(StatutCohorte.EN_COURS);
+        cohorteRepository.save(cohorte);
+    }
+
+    /**
+     * Récupérer les cohortes par statut (actives ou archivées).
+     */
+    @Transactional(readOnly = true)
+    public List<CohorteResponse> getCohortesByStatut(StatutCohorte statut) {
+        UUID activeStructureId = getRequiredTenantId();
+        return cohorteRepository.findAllByStructureIdAndStatut(activeStructureId, statut)
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
     private UUID getRequiredTenantId() {
         UUID tenantId = TenantContext.getCurrentTenant();
         if (tenantId == null) {

@@ -54,4 +54,23 @@ public ResponseEntity<Void> archiverCohorte(@PathVariable UUID id) {
     cohorteService.archiverCohorte(id);
     return ResponseEntity.noContent().build();
 }
+
+/**
+ * Restaurer une cohorte archivée.
+ * Idempotent : peut être appelé plusieurs fois sans erreur.
+ */
+@PatchMapping("/{id}/restaurer")
+public ResponseEntity<Void> restaurerCohorte(@PathVariable UUID id) {
+    cohorteService.restaurerCohorte(id);
+    return ResponseEntity.noContent().build();
+}
+
+/**
+ * Récupérer les cohortes par statut (actives ou archivées).
+ * Query param: ?statut=PLANIFIEE|EN_COURS|TERMINEE|ARCHIVEE
+ */
+@GetMapping("/statut/{statut}")
+public ResponseEntity<List<CohorteResponse>> getCohortesByStatut(@PathVariable sn.jappo.jappo_backend.cohorte.entity.StatutCohorte statut) {
+    return ResponseEntity.ok(cohorteService.getCohortesByStatut(statut));
+}
 }

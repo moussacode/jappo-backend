@@ -13,6 +13,7 @@ import sn.jappo.jappo_backend.cohorte.repository.CohorteRepository;
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import sn.jappo.jappo_backend.mission.dto.CreateMissionRequest;
 import sn.jappo.jappo_backend.mission.dto.MissionResponse;
+import sn.jappo.jappo_backend.mission.dto.MissionCohorteResponse;
 import sn.jappo.jappo_backend.mission.dto.UpdateStatutMissionRequest;
 import sn.jappo.jappo_backend.mission.entity.MissionCohorte;
 import sn.jappo.jappo_backend.mission.entity.MissionProjet;
@@ -171,16 +172,16 @@ public class MissionService {
     @Transactional(readOnly = true)
     public List<MissionResponse> getMissionsForActiveStructure() {
         UUID activeStructureId = getRequiredTenantId();
-        
-        // Récupérer toutes les instances de missions (MissionProjet)
-        List<MissionResponse> missionProjetResponses = missionProjetRepository.findAllByStructureId(activeStructureId)
+
+        // Récupérer uniquement les instances de missions non archivées (MissionProjet)
+        List<MissionResponse> missionProjetResponses = missionProjetRepository.findAllByStructureIdAndArchive(activeStructureId, false)
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
-        
-        // Récupérer les modèles de missions (MissionCohorte) qui n'ont pas encore d'instances
+
+        // Récupérer les modèles de missions (MissionCohorte) non archivés qui n'ont pas encore d'instances
         // Cela permet de voir les missions créées pour des cohortes sans projets
-        List<MissionCohorte> allMissionCohortes = missionCohorteRepository.findAllByStructureId(activeStructureId);
+        List<MissionCohorte> allMissionCohortes = missionCohorteRepository.findAllByStructureIdAndArchive(activeStructureId, false);
         
         // Filtrer pour ne garder que les MissionCohorte qui n'ont pas d'instances MissionProjet
         List<MissionResponse> missionCohorteSansInstances = allMissionCohortes.stream()
@@ -194,6 +195,74 @@ public class MissionService {
         allResponses.addAll(missionCohorteSansInstances);
         
         return allResponses;
+    }
+
+    /**
+     * Récupère les missions de cohorte agrégées avec leurs statistiques de suivi.
+     * C'est l'endpoint corrigé pour l'UX des missions de cohorte (P0).
+     * 
+     * @return Liste des missions de cohorte avec statistiques agrégées
+     */
+    @Transactional(readOnly = true)
+    public List<MissionCohorteResponse> getMissionsCohorteAgregees() {
+        UUID activeStructureId = getRequiredTenantId();
+
+        // Récupérer uniquement les MissionCohorte non archivées de la structure
+        List<MissionCohorte> allMissionCohortes = missionCohorteRepository.findAllByStructureIdAndArchive(activeStructureId, false);
+        
+        // Pour chaque MissionCohorte, calculer les statistiques agrégées
+        List<MissionCohorteResponse> aggregatedResponses = new ArrayList<>();
+        
+        for (MissionCohorte mc : allMissionCohortes) {
+            // Récupérer tous les suivis individuels (MissionProjet) pour cette mission
+            List<MissionProjet> suivis = missionProjetRepository.findAllByMissionCohorteIdAndStructureId(mc.getId(), activeStructureId);
+            
+            // Calculer les statistiques
+            int nombreValides = (int) suivis.stream()
+                    .filter(mp -> mp.getStatut() == StatutMission.VALIDE || mp.getStatut() == StatutMission.VALIDEE)
+                    .count();
+            
+            int nombreEnRevue = (int) suivis.stream()
+                    .filter(mp -> mp.getStatut() == StatutMission.SOUMIS || mp.getStatut() == StatutMission.A_REVOIR)
+                    .count();
+            
+            int nombreEnRetard = 0; // Pourrait être calculé basé sur dateEcheance si nécessaire
+            
+            int nombreAFaire = (int) suivis.stream()
+                    .filter(mp -> mp.getStatut() == StatutMission.A_FAIRE || mp.getStatut() == StatutMission.EN_COURS)
+                    .count();
+            
+            // Mapper les suivis individuels pour le détail
+            List<MissionResponse> suivisIndividuels = suivis.stream()
+                    .map(this::mapToResponse)
+                    .toList();
+            
+            // Créer la réponse agrégée
+            UUID cohorteId = mc.getCohorte() != null ? mc.getCohorte().getId() : null;
+            String nomCohorte = mc.getCohorte() != null ? mc.getCohorte().getNom() : null;
+            
+            MissionCohorteResponse response = new MissionCohorteResponse(
+                    mc.getId(),
+                    mc.getTitre(),
+                    mc.getDescription(),
+                    mc.getDateEcheance(),
+                    mc.getPriorite(),
+                    cohorteId,
+                    nomCohorte,
+                    mc.getStructure() != null ? mc.getStructure().getId() : null,
+                    mc.getDateCreation(),
+                    suivis.size(), // nombreProjetsConcernes
+                    nombreValides,
+                    nombreEnRevue,
+                    nombreEnRetard,
+                    nombreAFaire,
+                    suivisIndividuels
+            );
+            
+            aggregatedResponses.add(response);
+        }
+        
+        return aggregatedResponses;
     }
 
     @Transactional(readOnly = true)
@@ -221,6 +290,8 @@ public class MissionService {
 
         MissionProjet mp = missionProjetRepository.findByIdAndStructureId(missionProjetId, activeStructureId)
                 .orElseThrow(() -> new RuntimeException("Mission introuvable pour ce projet"));
+
+        verifierNonArchiveMissionProjet(mp);
 
         // Capturer l'ancien statut AVANT modification
         StatutMission ancienStatut = mp.getStatut();
@@ -351,7 +422,11 @@ public MissionResponse updateMissionDetails(UUID missionProjetId, UpdateMissionR
     MissionProjet mp = missionProjetRepository.findByIdAndStructureId(missionProjetId, activeStructureId)
             .orElseThrow(() -> new RuntimeException("Mission introuvable"));
 
+    verifierNonArchiveMissionProjet(mp);
+
     MissionCohorte mc = mp.getMissionCohorte();
+    verifierNonArchiveMissionCohorte(mc);
+
     if (request.titre() != null) mc.setTitre(request.titre());
     if (request.description() != null) mc.setDescription(request.description());
     if (request.dateEcheance() != null) mc.setDateEcheance(request.dateEcheance());
@@ -407,6 +482,141 @@ public void deleteMission(UUID missionProjetId) {
 
                 missionProjetRepository.save(mp);
             }
+        }
+    }
+
+    /**
+     * Archive une mission de cohorte et tous ses suivis individuels.
+     * Idempotent : peut être appelé plusieurs fois sans erreur.
+     */
+    @Transactional
+    public void archiverMissionCohorte(UUID missionCohorteId) {
+        UUID activeStructureId = getRequiredTenantId();
+
+        MissionCohorte mc = missionCohorteRepository.findByIdAndStructureId(missionCohorteId, activeStructureId)
+                .orElseThrow(() -> new RuntimeException("Mission de cohorte introuvable"));
+
+        if (mc.isArchive()) {
+            return; // Déjà archivée, idempotent
+        }
+
+        mc.setArchive(true);
+        mc.setDateArchivage(java.time.LocalDateTime.now());
+        missionCohorteRepository.save(mc);
+
+        // Archiver aussi tous les suivis individuels
+        List<MissionProjet> suivis = missionProjetRepository.findAllByMissionCohorteIdAndStructureId(missionCohorteId, activeStructureId);
+        for (MissionProjet mp : suivis) {
+            mp.setArchive(true);
+            mp.setDateArchivage(java.time.LocalDateTime.now());
+            missionProjetRepository.save(mp);
+        }
+    }
+
+    /**
+     * Archive un suivi de mission individuel.
+     * Idempotent : peut être appelé plusieurs fois sans erreur.
+     */
+    @Transactional
+    public void archiverMissionProjet(UUID missionProjetId) {
+        UUID activeStructureId = getRequiredTenantId();
+
+        MissionProjet mp = missionProjetRepository.findByIdAndStructureId(missionProjetId, activeStructureId)
+                .orElseThrow(() -> new RuntimeException("Mission projet introuvable"));
+
+        if (mp.isArchive()) {
+            return; // Déjà archivée, idempotent
+        }
+
+        mp.setArchive(true);
+        mp.setDateArchivage(java.time.LocalDateTime.now());
+        missionProjetRepository.save(mp);
+    }
+
+    /**
+     * Restaure une mission de cohorte et tous ses suivis individuels.
+     * Idempotent : peut être appelé plusieurs fois sans erreur.
+     */
+    @Transactional
+    public void restaurerMissionCohorte(UUID missionCohorteId) {
+        UUID activeStructureId = getRequiredTenantId();
+
+        MissionCohorte mc = missionCohorteRepository.findByIdAndStructureId(missionCohorteId, activeStructureId)
+                .orElseThrow(() -> new RuntimeException("Mission de cohorte introuvable"));
+
+        if (!mc.isArchive()) {
+            return; // Déjà restaurée, idempotent
+        }
+
+        mc.setArchive(false);
+        mc.setDateArchivage(null);
+        missionCohorteRepository.save(mc);
+
+        // Restaurer aussi tous les suivis individuels
+        List<MissionProjet> suivis = missionProjetRepository.findAllByMissionCohorteIdAndStructureId(missionCohorteId, activeStructureId);
+        for (MissionProjet mp : suivis) {
+            mp.setArchive(false);
+            mp.setDateArchivage(null);
+            missionProjetRepository.save(mp);
+        }
+    }
+
+    /**
+     * Restaure un suivi de mission individuel.
+     * Idempotent : peut être appelé plusieurs fois sans erreur.
+     */
+    @Transactional
+    public void restaurerMissionProjet(UUID missionProjetId) {
+        UUID activeStructureId = getRequiredTenantId();
+
+        MissionProjet mp = missionProjetRepository.findByIdAndStructureId(missionProjetId, activeStructureId)
+                .orElseThrow(() -> new RuntimeException("Mission projet introuvable"));
+
+        if (!mp.isArchive()) {
+            return; // Déjà restaurée, idempotent
+        }
+
+        mp.setArchive(false);
+        mp.setDateArchivage(null);
+        missionProjetRepository.save(mp);
+    }
+
+    /**
+     * Récupérer les suivis individuels d'une mission de cohorte.
+     */
+    @Transactional(readOnly = true)
+    public List<MissionResponse> getSuivisIndividuels(UUID missionCohorteId) {
+        UUID activeStructureId = getRequiredTenantId();
+
+        // Vérifier que la mission de cohorte appartient à la structure
+        missionCohorteRepository.findByIdAndStructureId(missionCohorteId, activeStructureId)
+                .orElseThrow(() -> new RuntimeException("Mission de cohorte introuvable"));
+
+        // Récupérer tous les suivis individuels
+        List<MissionProjet> suivis = missionProjetRepository.findAllByMissionCohorteIdAndStructureId(missionCohorteId, activeStructureId);
+
+        return suivis.stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    /**
+     * Vérifie qu'une mission de cohorte n'est pas archivée.
+     * Lance une exception si la mission est archivée.
+     */
+    private void verifierNonArchiveMissionCohorte(MissionCohorte mc) {
+        if (mc.isArchive()) {
+            throw new IllegalStateException("Cette mission de cohorte est archivée et ne peut plus être modifiée");
+        }
+    }
+
+    /**
+     * Vérifie qu'un suivi de mission n'est pas archivé.
+     * Lance une exception si la mission est archivée.
+     */
+    private void verifierNonArchiveMissionProjet(MissionProjet mp) {
+        if (mp.isArchive()) {
+            throw new IllegalStateException("Cette mission est archivée et ne peut plus être modifiée");
         }
     }
 }

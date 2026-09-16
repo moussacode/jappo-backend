@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import sn.jappo.jappo_backend.mission.dto.UpdateMissionRequest;
 import sn.jappo.jappo_backend.mission.dto.CreateMissionRequest;
 import sn.jappo.jappo_backend.mission.dto.MissionResponse;
+import sn.jappo.jappo_backend.mission.dto.MissionCohorteResponse;
 import sn.jappo.jappo_backend.mission.dto.UpdateStatutMissionRequest;
 import sn.jappo.jappo_backend.mission.service.MissionService;
 
@@ -46,6 +47,15 @@ public class MissionController {
     @GetMapping
     public ResponseEntity<List<MissionResponse>> getMyMissions() {
         return ResponseEntity.ok(missionService.getMissionsForActiveStructure());
+    }
+
+    /**
+     * Récupérer les missions de cohorte agrégées avec leurs statistiques de suivi.
+     * Endpoint corrigé pour l'UX des missions de cohorte (P0).
+     */
+    @GetMapping("/agregees")
+    public ResponseEntity<List<MissionCohorteResponse>> getMissionsCohorteAgregees() {
+        return ResponseEntity.ok(missionService.getMissionsCohorteAgregees());
     }
 
     /**
@@ -88,5 +98,53 @@ public ResponseEntity<Void> deleteMission(@PathVariable UUID id) {
     return ResponseEntity.noContent().build();
 }
 
-    
+/**
+ * Archiver une mission de cohorte et tous ses suivis individuels.
+ * Idempotent : peut être appelé plusieurs fois sans erreur.
+ */
+@PatchMapping("/{id}/archiver")
+public ResponseEntity<Void> archiverMissionCohorte(@PathVariable UUID id) {
+    missionService.archiverMissionCohorte(id);
+    return ResponseEntity.noContent().build();
+}
+
+/**
+ * Récupérer les suivis individuels d'une mission de cohorte.
+ * GET /api/missions/{id}/suivis
+ */
+@GetMapping("/{id}/suivis")
+public ResponseEntity<List<MissionResponse>> getSuivisIndividuels(@PathVariable UUID id) {
+    return ResponseEntity.ok(missionService.getSuivisIndividuels(id));
+}
+
+/**
+ * Archiver un suivi de mission individuel.
+ * Idempotent : peut être appelé plusieurs fois sans erreur.
+ */
+@PatchMapping("/projet/{id}/archiver")
+public ResponseEntity<Void> archiverMissionProjet(@PathVariable UUID id) {
+    missionService.archiverMissionProjet(id);
+    return ResponseEntity.noContent().build();
+}
+
+/**
+ * Restaurer une mission de cohorte et tous ses suivis individuels.
+ * Idempotent : peut être appelé plusieurs fois sans erreur.
+ */
+@PatchMapping("/{id}/restaurer")
+public ResponseEntity<Void> restaurerMissionCohorte(@PathVariable UUID id) {
+    missionService.restaurerMissionCohorte(id);
+    return ResponseEntity.noContent().build();
+}
+
+/**
+ * Restaurer un suivi de mission individuel.
+ * Idempotent : peut être appelé plusieurs fois sans erreur.
+ */
+@PatchMapping("/projet/{id}/restaurer")
+public ResponseEntity<Void> restaurerMissionProjet(@PathVariable UUID id) {
+    missionService.restaurerMissionProjet(id);
+    return ResponseEntity.noContent().build();
+}
+
 }

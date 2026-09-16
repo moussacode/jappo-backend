@@ -64,6 +64,17 @@ public class MissionProjet {
     @CreationTimestamp
     private LocalDateTime dateCreation;
 
+    /**
+     * Archivage : axe indépendant du statut métier. Un suivi de mission peut être
+     * archivé quelle que soit son phase — ce n'est pas un échec, seulement une décision
+     * de l'incubateur de le figer. Les données associées (livrables, historique)
+     * restent intactes et consultables ; seules les nouvelles opérations actives sont bloquées.
+     */
+    @Column(nullable = false)
+    private boolean archive = false;
+
+    private LocalDateTime dateArchivage;
+
     // Helper pour ajouter un livrable
     public void addLivrable(Livrable livrable) {
         livrables.add(livrable);

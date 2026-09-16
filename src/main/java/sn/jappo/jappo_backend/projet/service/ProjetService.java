@@ -12,6 +12,7 @@ import sn.jappo.jappo_backend.cohorte.entity.Cohorte;
 import sn.jappo.jappo_backend.cohorte.repository.CohorteRepository;
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
+import sn.jappo.jappo_backend.mission.entity.StatutMission;
 import sn.jappo.jappo_backend.projet.dto.CreateProjetRequest;
 import sn.jappo.jappo_backend.projet.dto.ProjetResponse;
 import sn.jappo.jappo_backend.projet.entity.Projet;
@@ -104,11 +105,25 @@ private StatutProjet statutPourPhase(PhaseParcours phase) {
         case POST_INCUBATION -> StatutProjet.EN_ACCELERATION;
     };
 }
+    /**
+     * @param filtreArchivage "ACTIFS" (défaut), "ARCHIVES" ou "TOUS" — insensible à la casse.
+     *                        Défaut sur "TOUS" en interne pour ne pas casser silencieusement
+     *                        les écrans existants qui appellent GET /api/projets sans paramètre :
+     *                        avant ce correctif, aucun projet n'était jamais filtré. Le frontend
+     *                        doit passer explicitement ACTIFS ou ARCHIVES pour bénéficier du filtre.
+     */
     @Transactional(readOnly = true)
-    public List<ProjetResponse> getProjetsForActiveStructure() {
+    public List<ProjetResponse> getProjetsForActiveStructure(String filtreArchivage) {
         UUID activeStructureId = getRequiredTenantId();
+        String filtre = filtreArchivage == null ? "TOUS" : filtreArchivage.toUpperCase();
+
         return projetRepository.findAllByStructureId(activeStructureId)
                 .stream()
+                .filter(p -> switch (filtre) {
+                    case "ACTIFS" -> !p.isArchive();
+                    case "ARCHIVES" -> p.isArchive();
+                    default -> true; // "TOUS" ou valeur inconnue
+                })
                 .map(this::mapToResponse)
                 .toList();
     }
@@ -156,13 +171,21 @@ public ProjetResponse getProjetPrincipalByEntrepreneur(UUID entrepreneurId) {
         UUID entrepreneurId = null;
         if (projet.getEntrepreneur() != null) {
             entrepreneurId = projet.getEntrepreneur().getId();
-            nomEntrepreneur = (projet.getEntrepreneur().getPrenom() != null ? projet.getEntrepreneur().getPrenom() : "") 
-                    + " " 
+            nomEntrepreneur = (projet.getEntrepreneur().getPrenom() != null ? projet.getEntrepreneur().getPrenom() : "")
+                    + " "
                     + (projet.getEntrepreneur().getNom() != null ? projet.getEntrepreneur().getNom() : "");
         }
 
         UUID cohorteId = projet.getCohorte() != null ? projet.getCohorte().getId() : null;
         String nomCohorte = projet.getCohorte() != null ? projet.getCohorte().getNom() : null;
+
+        // Calculer les statistiques de missions pour le projet
+        UUID structureId = projet.getStructure().getId();
+        Integer nombreMissionsTotal = (int) missionProjetRepository.countByProjetIdAndStructureId(projet.getId(), structureId);
+        Integer nombreMissionsValidees = (int) missionProjetRepository.countByProjetIdAndStructureIdAndStatut(
+                projet.getId(), structureId, StatutMission.VALIDE)
+                + (int) missionProjetRepository.countByProjetIdAndStructureIdAndStatut(
+                projet.getId(), structureId, StatutMission.VALIDEE);
 
         return new ProjetResponse(
                 projet.getId(),
@@ -176,8 +199,48 @@ public ProjetResponse getProjetPrincipalByEntrepreneur(UUID entrepreneurId) {
                 cohorteId,
                 nomCohorte,
                 projet.getStructure().getId(),
-                projet.getDateCreation()
+                projet.getDateCreation(),
+                projet.isArchive(),
+                projet.getDateArchivage(),
+                nombreMissionsTotal,
+                nombreMissionsValidees
         );
+    }
+
+    /**
+     * Vérifie que l'utilisateur courant a le droit d'agir sur ce projet :
+     *   - un ADMIN_STRUCTURE ou un COACH de la structure active peut agir sur tout projet ;
+     *   - un ENTREPRENEUR ne peut agir QUE sur son propre projet.
+     * Sans ce contrôle, un entrepreneur qui devine l'UUID d'un projet d'un autre
+     * entrepreneur de la même structure pourrait le modifier — c'est le trou de sécurité
+     * identifié dans l'audit (section 3 du cahier des charges).
+     */
+    private void verifierDroitModification(Projet projet, User currentUser, UUID activeStructureId) {
+        if (currentUser == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Utilisateur non authentifié");
+        }
+
+        MembreStructure membre = membreStructureRepository
+                .findByUserIdAndStructureId(currentUser.getId(), activeStructureId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Vous n'êtes pas membre de cette structure"));
+
+        boolean estEncadrant = membre.getRole() == RoleMembreStructure.ADMIN_STRUCTURE
+                || membre.getRole() == RoleMembreStructure.COACH;
+        boolean estProprietaire = projet.getEntrepreneur() != null
+                && projet.getEntrepreneur().getId().equals(currentUser.getId());
+
+        if (!estEncadrant && !estProprietaire) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Vous n'êtes pas autorisé à modifier ce projet");
+        }
+    }
+
+    private void verifierNonArchive(Projet projet) {
+        if (projet.isArchive()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ce projet est archivé et ne peut plus être modifié");
+        }
     }
 
 
@@ -185,10 +248,13 @@ public ProjetResponse getProjetPrincipalByEntrepreneur(UUID entrepreneurId) {
 
 
     @Transactional
-public ProjetResponse updateNomProjet(UUID id, String nouveauNom) {
+public ProjetResponse updateNomProjet(UUID id, String nouveauNom, User currentUser) {
     UUID activeStructureId = getRequiredTenantId();
     Projet projet = projetRepository.findByIdAndStructureId(id, activeStructureId)
-            .orElseThrow(() -> new RuntimeException("Projet introuvable"));
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Projet introuvable"));
+
+    verifierDroitModification(projet, currentUser, activeStructureId);
+    verifierNonArchive(projet);
 
     projet.setNom(nouveauNom);
     Projet updated = projetRepository.save(projet);
@@ -197,10 +263,13 @@ public ProjetResponse updateNomProjet(UUID id, String nouveauNom) {
 
 
 @Transactional
-public ProjetResponse updateProjet(UUID id, UpdateProjetRequest request) {
+public ProjetResponse updateProjet(UUID id, UpdateProjetRequest request, User currentUser) {
     UUID activeStructureId = getRequiredTenantId();
     Projet projet = projetRepository.findByIdAndStructureId(id, activeStructureId)
-            .orElseThrow(() -> new RuntimeException("Projet introuvable"));
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Projet introuvable"));
+
+    verifierDroitModification(projet, currentUser, activeStructureId);
+    verifierNonArchive(projet);
 
     if (request.nom() != null) projet.setNom(request.nom());
     if (request.description() != null) projet.setDescription(request.description());
@@ -209,13 +278,44 @@ public ProjetResponse updateProjet(UUID id, UpdateProjetRequest request) {
     return mapToResponse(projetRepository.save(projet));
 }
 
+/**
+ * Archive le projet (soft — les données associées ne sont jamais supprimées).
+ * Idempotent : archiver un projet déjà archivé ne fait rien de plus (pas d'erreur),
+ * pour que l'action reste sûre à rejouer depuis Angular en cas de double-clic.
+ */
 @Transactional
-public void archiverProjet(UUID id) {
+public void archiverProjet(UUID id, User currentUser) {
     UUID activeStructureId = getRequiredTenantId();
     Projet projet = projetRepository.findByIdAndStructureId(id, activeStructureId)
-            .orElseThrow(() -> new RuntimeException("Projet introuvable"));
-    projet.setStatut(StatutProjet.ABANDONNE);
-    projetRepository.save(projet);
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Projet introuvable"));
+
+    verifierDroitModification(projet, currentUser, activeStructureId);
+
+    if (!projet.isArchive()) {
+        projet.setArchive(true);
+        projet.setDateArchivage(java.time.LocalDateTime.now());
+        projetRepository.save(projet);
+    }
+}
+
+/**
+ * Restaure le projet (soft — les données associées ne sont jamais supprimées).
+ * Idempotent : restaurer un projet déjà restauré ne fait rien de plus (pas d'erreur),
+ * pour que l'action reste sûre à rejouer depuis Angular en cas de double-clic.
+ */
+@Transactional
+public void restaurerProjet(UUID id, User currentUser) {
+    UUID activeStructureId = getRequiredTenantId();
+    Projet projet = projetRepository.findByIdAndStructureId(id, activeStructureId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Projet introuvable"));
+
+    verifierDroitModification(projet, currentUser, activeStructureId);
+
+    if (projet.isArchive()) {
+        projet.setArchive(false);
+        projet.setDateArchivage(null);
+        projetRepository.save(projet);
+    }
 }
 
 

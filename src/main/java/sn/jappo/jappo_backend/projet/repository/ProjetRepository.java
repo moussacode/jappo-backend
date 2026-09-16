@@ -25,4 +25,8 @@ Integer findAverageScoreMaturiteByStructureId(@Param("structureId") UUID structu
 
 @Query("SELECT COUNT(p) FROM Projet p WHERE p.structure.id = :structureId AND p.scoreMaturite < :scoreMax")
 long countProjetsAttentionByStructureId(@Param("structureId") UUID structureId, @Param("scoreMax") int scoreMax);
+
+long countByStructureId(UUID structureId);
+
+long countByCohorteIdAndStructureId(UUID cohorteId, UUID structureId);
 }
