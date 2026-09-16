@@ -16,4 +16,7 @@ public interface CohorteRepository extends JpaRepository<Cohorte, UUID> {
     Optional<Cohorte> findByIdAndStructureId(UUID id, UUID structureId);
 
     long countByStructureId(UUID structureId);
+
+    // Filtrage par statut (pour gérer l'archivage)
+    List<Cohorte> findAllByStructureIdAndStatut(UUID structureId, sn.jappo.jappo_backend.cohorte.entity.StatutCohorte statut);
 }

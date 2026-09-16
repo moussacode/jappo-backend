@@ -60,4 +60,16 @@ public class Projet {
 
     @CreationTimestamp
     private LocalDateTime dateCreation;
+
+    /**
+     * Archivage : axe indépendant de {@code statut}. Un projet peut être archivé quelle
+     * que soit sa phase (y compris DIPLOME) — ce n'est pas un échec du projet (ABANDONNE),
+     * seulement une décision de l'incubateur de le figer. Les données associées (missions,
+     * livrables, historique) restent intactes et consultables ; seules les nouvelles
+     * opérations actives sont bloquées (voir ProjetService).
+     */
+    @Column(nullable = false)
+    private boolean archive = false;
+
+    private LocalDateTime dateArchivage;
 }

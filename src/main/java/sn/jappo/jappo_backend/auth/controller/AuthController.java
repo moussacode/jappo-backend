@@ -29,6 +29,9 @@ import sn.jappo.jappo_backend.user.dto.RegisterResponse;
 import sn.jappo.jappo_backend.user.dto.UserResponse;
 import sn.jappo.jappo_backend.user.entity.User;
 
+
+import sn.jappo.jappo_backend.auth.dto.GoogleLoginRequest;
+
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -169,4 +172,25 @@ public class AuthController {
     public ResponseEntity<AuthResponse> accepterInvitation(@Valid @RequestBody AccepterInvitationRequest request) {
         return ResponseEntity.ok(authService.accepterInvitation(request));
     }
+
+
+@PostMapping("/google")
+public ResponseEntity<LoginResponse> loginGoogle(@RequestBody GoogleLoginRequest request) {
+    User user = authService.loginGoogle(request.idToken());
+    return ResponseEntity.ok(construireReponse(user));
+}
+
+@PostMapping("/google/inscription")
+public ResponseEntity<LoginResponse> inscriptionGoogle(@RequestBody GoogleLoginRequest request) {
+    User user = authService.inscriptionGoogle(request.idToken());
+    return ResponseEntity.ok(construireReponse(user));
+}
+
+private LoginResponse construireReponse(User user) {
+    String token = jwtService.generateToken(user);
+    return new LoginResponse(
+            user.getId(), user.getPrenom(), user.getNom(),
+            user.getEmail(), user.isEmailVerified(), token
+    );
+}
 }

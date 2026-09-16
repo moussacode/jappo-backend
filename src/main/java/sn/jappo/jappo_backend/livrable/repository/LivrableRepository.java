@@ -21,4 +21,6 @@ public interface LivrableRepository extends JpaRepository<Livrable, UUID> {
     long countByStructureIdAndStatut(UUID structureId, StatutLivrable statut);
 
     Optional<Livrable> findByIdAndStructureId(UUID id, UUID structureId);
+
+    long countByProjetIdAndStructureIdAndStatut(UUID projetId, UUID structureId, StatutLivrable statut);
 }

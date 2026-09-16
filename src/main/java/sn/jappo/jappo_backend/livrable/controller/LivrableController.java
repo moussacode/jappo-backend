@@ -1,28 +1,30 @@
 package sn.jappo.jappo_backend.livrable.controller;
 
 import java.util.List;
-import java.util.UUID;
-import org.springframework.web.bind.annotation.RequestParam;
-import sn.jappo.jappo_backend.livrable.dto.UpdateLivrableRequest;
-import org.springframework.web.multipart.MultipartFile;
-import org.springframework.http.MediaType;
-import sn.jappo.jappo_backend.livrable.service.FileStorageService;
 import java.util.Map;
-import sn.jappo.jappo_backend.config.tenant.TenantContext;
+import java.util.UUID;
+
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import sn.jappo.jappo_backend.livrable.dto.CreateLivrableRequest;
 import sn.jappo.jappo_backend.livrable.dto.EvaluateLivrableRequest;
 import sn.jappo.jappo_backend.livrable.dto.LivrableResponse;
+import sn.jappo.jappo_backend.livrable.dto.SoumettreVersionRequest;
+import sn.jappo.jappo_backend.livrable.dto.UpdateLivrableRequest;
+import sn.jappo.jappo_backend.livrable.service.FileStorageService;
 import sn.jappo.jappo_backend.livrable.service.LivrableService;
 
 @RestController
@@ -41,6 +43,13 @@ public class LivrableController {
     public ResponseEntity<LivrableResponse> createLivrable(@RequestBody CreateLivrableRequest request) {
         LivrableResponse response = livrableService.createLivrable(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping("/{id}/versions")
+    public ResponseEntity<LivrableResponse> soumettreNouvelleVersion(
+            @PathVariable UUID id,
+            @RequestBody SoumettreVersionRequest request) {
+        return ResponseEntity.ok(livrableService.soumettreNouvelleVersion(id, request));
     }
 
     @PatchMapping("/{id}/evaluer")
@@ -70,16 +79,15 @@ public class LivrableController {
         return ResponseEntity.ok(Map.of("url", url));
     }
 
-
     @PatchMapping("/{id}")
-public ResponseEntity<LivrableResponse> updateLivrable(
-        @PathVariable UUID id, @RequestBody UpdateLivrableRequest request) {
-    return ResponseEntity.ok(livrableService.updateLivrable(id, request));
-}
+    public ResponseEntity<LivrableResponse> updateLivrable(
+            @PathVariable UUID id, @RequestBody UpdateLivrableRequest request) {
+        return ResponseEntity.ok(livrableService.updateLivrable(id, request));
+    }
 
-@DeleteMapping("/{id}")
-public ResponseEntity<Void> deleteLivrable(@PathVariable UUID id) {
-    livrableService.deleteLivrable(id);
-    return ResponseEntity.noContent().build();
-}
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteLivrable(@PathVariable UUID id) {
+        livrableService.deleteLivrable(id);
+        return ResponseEntity.noContent().build();
+    }
 }

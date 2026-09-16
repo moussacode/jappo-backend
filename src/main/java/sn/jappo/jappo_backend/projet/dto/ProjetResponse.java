@@ -17,5 +17,10 @@ public record ProjetResponse(
         UUID cohorteId,
         String nomCohorte,
         UUID structureId,
-        LocalDateTime dateCreation
+        LocalDateTime dateCreation,
+        boolean archive,
+        LocalDateTime dateArchivage,
+        // Statistiques de missions (calculées côté backend)
+        Integer nombreMissionsTotal,
+        Integer nombreMissionsValidees
 ) {}

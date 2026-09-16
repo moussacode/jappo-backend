@@ -42,6 +42,11 @@ public class Cohorte {
     @Column(nullable = false)
     private StatutCohorte statut = StatutCohorte.PLANIFIEE;
 
+
+    @Enumerated(EnumType.STRING)
+@Column(nullable = false)
+private PhaseParcours phase = PhaseParcours.PRE_INCUBATION;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "structure_id", nullable = false)
     private Structure structure;

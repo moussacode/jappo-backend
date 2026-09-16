@@ -21,6 +21,8 @@ public record MissionResponse(
         String nomProjet,
         UUID cohorteId,
         String nomCohorte,         //Évite un fetch supplémentaire côté frontend
+        UUID entrepreneurId,
+        String nomEntrepreneur,
         
         // Assignation
         UUID assigneAId,

@@ -108,6 +108,8 @@ public class DashboardService {
                                 + (l.getProjet().getEntrepreneur().getNom() != null ? l.getProjet().getEntrepreneur().getNom() : "")
                             : "—";
 
+                    UUID missionId = l.getMissionProjet() != null ? l.getMissionProjet().getId() : null;
+
                     return new LivrableRecentResponse(
                             l.getId(),
                             l.getNom(),
@@ -115,7 +117,8 @@ public class DashboardService {
                             nomProjet,
                             nomEntrepreneur.trim(),
                             l.getStatut(),
-                            l.getDateDepot()
+                            l.getDateDepot(),
+                            missionId
                     );
                 })
                 .toList();

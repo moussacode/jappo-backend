@@ -32,7 +32,7 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @NotBlank
+    
     private String password;
 
     private boolean emailVerified = false;

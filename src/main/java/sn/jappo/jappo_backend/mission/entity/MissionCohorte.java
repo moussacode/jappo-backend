@@ -52,6 +52,21 @@ public class MissionCohorte {
     @JoinColumn(name = "structure_id", nullable = false)
     private Structure structure;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "modele_id")
+    private MissionModele modele;
+
     @CreationTimestamp
     private LocalDateTime dateCreation;
+
+    /**
+     * Archivage : axe indépendant du statut métier. Une mission de cohorte peut être
+     * archivée quelle que soit son phase — ce n'est pas un échec, seulement une décision
+     * de l'incubateur de la figer. Les données associées (suivis individuels, livrables)
+     * restent intactes et consultables ; seules les nouvelles opérations actives sont bloquées.
+     */
+    @Column(nullable = false)
+    private boolean archive = false;
+
+    private LocalDateTime dateArchivage;
 }

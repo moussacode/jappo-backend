@@ -11,5 +11,6 @@ public record LivrableRecentResponse(
         String nomProjet,
         String nomEntrepreneur,
         StatutLivrable statut,
-        LocalDateTime dateDepot
+        LocalDateTime dateDepot,
+        UUID missionId
 ) {}
