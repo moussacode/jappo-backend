@@ -289,6 +289,14 @@ public class LivrableService {
     }
 
     @Transactional(readOnly = true)
+    public LivrableResponse getLivrableById(UUID id) {
+        UUID activeStructureId = getRequiredTenantId();
+        Livrable livrable = livrableRepository.findByIdAndStructureId(id, activeStructureId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Livrable introuvable"));
+        return mapToResponse(livrable);
+    }
+
+    @Transactional(readOnly = true)
     public List<LivrableResponse> getLivrablesByMission(UUID missionProjetId) {
         UUID activeStructureId = getRequiredTenantId();
         return livrableRepository.findAllByMissionProjetIdAndStructureId(missionProjetId, activeStructureId)

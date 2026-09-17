@@ -96,4 +96,62 @@ public class ConversationController {
     ) {
         return ResponseEntity.ok(conversationIaService.updateContexte(id, request));
     }
+
+    /**
+     * Renommer une conversation.
+     */
+    @PatchMapping("/{id}/titre")
+    public ResponseEntity<ConversationResponse> renameConversation(
+            @PathVariable UUID id,
+            @RequestBody RenameConversationRequest request,
+            @AuthenticationPrincipal User coach
+    ) {
+        return ResponseEntity.ok(conversationIaService.renameConversation(id, request.titre(), coach));
+    }
+
+    /**
+     * Archiver une conversation.
+     */
+    @PatchMapping("/{id}/archiver")
+    public ResponseEntity<Void> archiveConversation(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User coach
+    ) {
+        conversationIaService.archiveConversation(id, coach);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Restaurer une conversation archivée.
+     */
+    @PatchMapping("/{id}/restaurer")
+    public ResponseEntity<Void> restaurerConversation(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User coach
+    ) {
+        conversationIaService.restaurerConversation(id, coach);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Supprimer définitivement une conversation.
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteConversation(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User coach
+    ) {
+        conversationIaService.deleteConversation(id, coach);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Lister les conversations archivées.
+     */
+    @GetMapping("/archivees")
+    public ResponseEntity<List<ConversationResponse>> listArchivedConversations(
+            @AuthenticationPrincipal User coach
+    ) {
+        return ResponseEntity.ok(conversationIaService.listArchivedConversations(coach));
+    }
 }

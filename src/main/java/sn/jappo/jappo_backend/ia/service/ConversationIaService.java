@@ -22,6 +22,7 @@ import sn.jappo.jappo_backend.user.entity.User;
 import sn.jappo.jappo_backend.user.repository.UserRepository;
 import sn.jappo.jappo_backend.ia.action.AiActionService;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -91,6 +92,11 @@ public class ConversationIaService {
                 : new ConversationContexte();
         conversation.setContexteJson(toJson(contexte));
 
+        // Définir le titre si fourni, sinon null
+        if (request != null && request.titre() != null && !request.titre().isBlank()) {
+            conversation.setTitre(request.titre());
+        }
+
         Conversation saved = conversationRepository.save(conversation);
         return mapToResponse(saved, List.of());
     }
@@ -137,18 +143,22 @@ public class ConversationIaService {
         messageCoach.setActionsJson("[]");
         Message savedCoach = messageRepository.save(messageCoach);
 
-        // 3. Construire le AiContext à partir du contexte sélectionné
+        // 3. Mettre à jour la date de dernière activité de la conversation
+        conversation.setDateDerniereActivite(java.time.LocalDateTime.now());
+        conversationRepository.save(conversation);
+
+        // 4. Construire le AiContext à partir du contexte sélectionné
         ConversationContexte contexte = fromJson(conversation.getContexteJson());
         AiContext aiContext = aiContextBuilder.build(structureId, contexte, coach);
 
-        // 4. Charger l'historique pour le transmettre au modèle
+        // 5. Charger l'historique pour le transmettre au modèle
         List<Message> historique = messageRepository
                 .findAllByConversationIdOrderByDateEnvoiAsc(conversationId);
 
-        // 5. Générer la réponse via AiService (HttpAiService en fonctionnement normal)
+        // 6. Générer la réponse via AiService (HttpAiService en fonctionnement normal)
         AiService.AiResponse reponse = aiService.generateResponse(request.contenu().trim(), aiContext, historique);
 
-        // 6. Enregistrer le message ASSISTANT
+        // 7. Enregistrer le message ASSISTANT
        Message messageAssistant = new Message();
 messageAssistant.setConversation(conversation);
 messageAssistant.setAuteur(Auteur.ASSISTANT);
@@ -158,7 +168,7 @@ messageAssistant.setSourcesJson(toJson(reponse.sources()));
 
 Message savedAssistant = messageRepository.save(messageAssistant);
 
-// 7. Enregistrer les actions IA et récupérer les actions avec leurs IDs BDD
+// 8. Enregistrer les actions IA et récupérer les actions avec leurs IDs BDD
 List<java.util.Map<String, Object>> actionsEnregistrees = List.of();
 
 if (reponse.success()
@@ -172,7 +182,7 @@ if (reponse.success()
     );
 }
 
-// 8. Sauvegarder dans le message assistant les actions enrichies avec leurs IDs
+// 9. Sauvegarder dans le message assistant les actions enrichies avec leurs IDs
 savedAssistant.setActionsJson(toJson(actionsEnregistrees));
 messageRepository.save(savedAssistant);
 
@@ -210,10 +220,88 @@ messageRepository.save(savedAssistant);
     public List<ConversationResponse> listConversations(User coach) {
         UUID structureId = getRequiredTenantId();
         return conversationRepository
-                .findAllByStructureIdAndCoachId(structureId, coach.getId())
+                .findAllByStructureIdAndCoachIdAndArchiveeFalseOrderByDateDerniereActiviteDesc(structureId, coach.getId())
                 .stream()
                 .map(c -> mapToResponse(c, List.of()))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConversationResponse> listArchivedConversations(User coach) {
+        UUID structureId = getRequiredTenantId();
+        return conversationRepository
+                .findAllByStructureIdAndCoachIdAndArchiveeTrue(structureId, coach.getId())
+                .stream()
+                .map(c -> mapToResponse(c, List.of()))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConversationResponse> listRecentConversations(User coach, LocalDateTime since) {
+        UUID structureId = getRequiredTenantId();
+        return conversationRepository
+                .findAllByStructureIdAndCoachIdAndDateCreationAfter(structureId, coach.getId(), since)
+                .stream()
+                .map(c -> mapToResponse(c, List.of()))
+                .toList();
+    }
+
+    // ── Gestion des conversations ─────────────────────────────────────────────
+
+    @Transactional
+    public ConversationResponse renameConversation(UUID conversationId, String nouveauTitre, User coach) {
+        UUID structureId = getRequiredTenantId();
+
+        Conversation conversation = conversationRepository
+                .findByIdAndStructureId(conversationId, structureId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Conversation introuvable ou accès non autorisé"));
+
+        conversation.setTitre(nouveauTitre);
+        Conversation saved = conversationRepository.save(conversation);
+
+        List<Message> messages = messageRepository
+                .findAllByConversationIdOrderByDateEnvoiAsc(conversationId);
+
+        return mapToResponse(saved, messages);
+    }
+
+    @Transactional
+    public void archiveConversation(UUID conversationId, User coach) {
+        UUID structureId = getRequiredTenantId();
+
+        Conversation conversation = conversationRepository
+                .findByIdAndStructureId(conversationId, structureId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Conversation introuvable ou accès non autorisé"));
+
+        conversation.setArchivee(true);
+        conversationRepository.save(conversation);
+    }
+
+    @Transactional
+    public void restaurerConversation(UUID conversationId, User coach) {
+        UUID structureId = getRequiredTenantId();
+
+        Conversation conversation = conversationRepository
+                .findByIdAndStructureId(conversationId, structureId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Conversation introuvable ou accès non autorisé"));
+
+        conversation.setArchivee(false);
+        conversationRepository.save(conversation);
+    }
+
+    @Transactional
+    public void deleteConversation(UUID conversationId, User coach) {
+        UUID structureId = getRequiredTenantId();
+
+        Conversation conversation = conversationRepository
+                .findByIdAndStructureId(conversationId, structureId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Conversation introuvable ou accès non autorisé"));
+
+        conversationRepository.delete(conversation);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -267,8 +355,11 @@ messageRepository.save(savedAssistant);
                 c.getStructure().getId(),
                 c.getCoach().getId(),
                 contexte,
+                c.getTitre(),
+                c.getArchivee(),
                 c.getDateCreation(),
                 c.getDateModification(),
+                c.getDateDerniereActivite(),
                 msgResponses
         );
     }

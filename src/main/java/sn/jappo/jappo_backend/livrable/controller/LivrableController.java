@@ -59,6 +59,11 @@ public class LivrableController {
         return ResponseEntity.ok(livrableService.evaluateLivrable(id, request));
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<LivrableResponse> getLivrableById(@PathVariable UUID id) {
+        return ResponseEntity.ok(livrableService.getLivrableById(id));
+    }
+
     @GetMapping("/mission/{missionProjetId}")
     public ResponseEntity<List<LivrableResponse>> getLivrablesByMission(@PathVariable UUID missionProjetId) {
         return ResponseEntity.ok(livrableService.getLivrablesByMission(missionProjetId));

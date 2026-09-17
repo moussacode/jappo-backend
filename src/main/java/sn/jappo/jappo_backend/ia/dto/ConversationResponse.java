@@ -14,7 +14,10 @@ public record ConversationResponse(
         UUID structureId,
         UUID coachId,
         ConversationContexte contexte,
+        String titre,
+        Boolean archivee,
         LocalDateTime dateCreation,
         LocalDateTime dateModification,
+        LocalDateTime dateDerniereActivite,
         List<MessageResponse> messages
 ) {}
