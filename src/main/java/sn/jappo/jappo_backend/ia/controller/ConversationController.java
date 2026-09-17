@@ -8,6 +8,11 @@ import sn.jappo.jappo_backend.ia.dto.*;
 import sn.jappo.jappo_backend.ia.service.ConversationIaService;
 import sn.jappo.jappo_backend.user.entity.User;
 
+
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+
+
 import java.util.List;
 import java.util.UUID;
 
@@ -65,9 +70,17 @@ public class ConversationController {
      * Récupérer une conversation avec ses messages et son contexte.
      */
     @GetMapping("/{id}")
-    public ResponseEntity<ConversationResponse> getConversation(
-            @PathVariable UUID id
-    ) {
+public ResponseEntity<ConversationResponse> getConversation(
+        @Parameter(
+                name = "X-Structure-Id",
+                description = "Identifiant de la structure active",
+                required = true,
+                in = ParameterIn.HEADER
+        )
+        @RequestHeader("X-Structure-Id") UUID structureId,
+
+        @PathVariable UUID id
+) {
         return ResponseEntity.ok(conversationIaService.getConversation(id));
     }
 

@@ -29,19 +29,19 @@ import java.util.UUID;
 /**
  * Orchestre le pipeline de l'Assistant IA :
  *
- *   POST /api/conversations              → createConversation
- *   GET  /api/conversations/{id}         → getConversation
- *   POST /api/conversations/{id}/messages → sendMessage
- *   PATCH /api/conversations/{id}/contexte → updateContexte
+ * POST /api/conversations → createConversation
+ * GET /api/conversations/{id} → getConversation
+ * POST /api/conversations/{id}/messages → sendMessage
+ * PATCH /api/conversations/{id}/contexte → updateContexte
  *
  * Pipeline sendMessage :
- *   1. Vérifier auth + tenant
- *   2. Charger la conversation (tenant-safe)
- *   3. Enregistrer le message COACH
- *   4. Construire AiContext (AiContextBuilder)
- *   5. Appeler AiService (FakeAiService pour l'instant)
- *   6. Enregistrer le message ASSISTANT
- *   7. Retourner les deux messages
+ * 1. Vérifier auth + tenant
+ * 2. Charger la conversation (tenant-safe)
+ * 3. Enregistrer le message COACH
+ * 4. Construire AiContext (AiContextBuilder)
+ * 5. Appeler AiService (FakeAiService pour l'instant)
+ * 6. Enregistrer le message ASSISTANT
+ * 7. Retourner les deux messages
  */
 @Service
 public class ConversationIaService {
@@ -62,8 +62,7 @@ public class ConversationIaService {
             UserRepository userRepository,
             AiContextBuilder aiContextBuilder,
             AiService aiService,
-            AiActionService aiActionService
-    ) {
+            AiActionService aiActionService) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.structureRepository = structureRepository;
@@ -142,6 +141,9 @@ public class ConversationIaService {
         messageCoach.setSourcesJson("[]");
         messageCoach.setActionsJson("[]");
         Message savedCoach = messageRepository.save(messageCoach);
+        if (conversation.getTitre() == null || conversation.getTitre().isBlank()) {
+    conversation.setTitre(genererTitreDepuisMessage(messageCoach.getContenu()));
+}
 
         // 3. Mettre à jour la date de dernière activité de la conversation
         conversation.setDateDerniereActivite(java.time.LocalDateTime.now());
@@ -159,32 +161,31 @@ public class ConversationIaService {
         AiService.AiResponse reponse = aiService.generateResponse(request.contenu().trim(), aiContext, historique);
 
         // 7. Enregistrer le message ASSISTANT
-       Message messageAssistant = new Message();
-messageAssistant.setConversation(conversation);
-messageAssistant.setAuteur(Auteur.ASSISTANT);
-messageAssistant.setContenu(reponse.content());
-messageAssistant.setModel(reponse.model());
-messageAssistant.setSourcesJson(toJson(reponse.sources()));
+        Message messageAssistant = new Message();
+        messageAssistant.setConversation(conversation);
+        messageAssistant.setAuteur(Auteur.ASSISTANT);
+        messageAssistant.setContenu(reponse.content());
+        messageAssistant.setModel(reponse.model());
+        messageAssistant.setSourcesJson(toJson(reponse.sources()));
 
-Message savedAssistant = messageRepository.save(messageAssistant);
+        Message savedAssistant = messageRepository.save(messageAssistant);
 
-// 8. Enregistrer les actions IA et récupérer les actions avec leurs IDs BDD
-List<java.util.Map<String, Object>> actionsEnregistrees = List.of();
+        // 8. Enregistrer les actions IA et récupérer les actions avec leurs IDs BDD
+        List<java.util.Map<String, Object>> actionsEnregistrees = List.of();
 
-if (reponse.success()
-        && reponse.actions() != null
-        && !reponse.actions().isEmpty()) {
+        if (reponse.success()
+                && reponse.actions() != null
+                && !reponse.actions().isEmpty()) {
 
-    actionsEnregistrees = aiActionService.enregistrerPropositions(
-            structureId,
-            savedAssistant.getId(),
-            reponse.actions()
-    );
-}
+            actionsEnregistrees = aiActionService.enregistrerPropositions(
+                    structureId,
+                    savedAssistant.getId(),
+                    reponse.actions());
+        }
 
-// 9. Sauvegarder dans le message assistant les actions enrichies avec leurs IDs
-savedAssistant.setActionsJson(toJson(actionsEnregistrees));
-messageRepository.save(savedAssistant);
+        // 9. Sauvegarder dans le message assistant les actions enrichies avec leurs IDs
+        savedAssistant.setActionsJson(toJson(actionsEnregistrees));
+        messageRepository.save(savedAssistant);
 
         return List.of(mapMessage(savedCoach), mapMessage(savedAssistant));
     }
@@ -203,8 +204,7 @@ messageRepository.save(savedAssistant);
         ConversationContexte newContexte = new ConversationContexte(
                 request.cohorteId(),
                 request.projetId(),
-                request.entrepreneurId()
-        );
+                request.entrepreneurId());
         conversation.setContexteJson(toJson(newContexte));
         conversationRepository.save(conversation);
 
@@ -220,7 +220,8 @@ messageRepository.save(savedAssistant);
     public List<ConversationResponse> listConversations(User coach) {
         UUID structureId = getRequiredTenantId();
         return conversationRepository
-                .findAllByStructureIdAndCoachIdAndArchiveeFalseOrderByDateDerniereActiviteDesc(structureId, coach.getId())
+                .findAllByStructureIdAndCoachIdAndArchiveeFalseOrderByDateDerniereActiviteDesc(structureId,
+                        coach.getId())
                 .stream()
                 .map(c -> mapToResponse(c, List.of()))
                 .toList();
@@ -306,13 +307,32 @@ messageRepository.save(savedAssistant);
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+
+    private String genererTitreDepuisMessage(String contenu) {
+    if (contenu == null || contenu.isBlank()) {
+        return "Nouvelle conversation";
+    }
+
+    String titre = contenu
+            .trim()
+            .replaceAll("\\s+", " ");
+
+    // Supprimer le point final pour éviter les titres du genre ".... ?."
+    titre = titre.replaceAll("[.!]+$", "");
+
+    // Limiter la longueur
+    if (titre.length() > 60) {
+        titre = titre.substring(0, 57).trim() + "...";
+    }
+
+    return titre;
+}
     private UUID getRequiredTenantId() {
         UUID tenantId = TenantContext.getCurrentTenant();
         if (tenantId == null) {
             throw new ResponseStatusException(
                     org.springframework.http.HttpStatus.UNAUTHORIZED,
-                    "Aucune structure active (en-tête X-Structure-Id manquant ou invalide)"
-            );
+                    "Aucune structure active (en-tête X-Structure-Id manquant ou invalide)");
         }
         return tenantId;
     }
@@ -360,8 +380,7 @@ messageRepository.save(savedAssistant);
                 c.getDateCreation(),
                 c.getDateModification(),
                 c.getDateDerniereActivite(),
-                msgResponses
-        );
+                msgResponses);
     }
 
     private MessageResponse mapMessage(Message m) {
@@ -373,7 +392,6 @@ messageRepository.save(savedAssistant);
                 m.getDateEnvoi(),
                 m.getModel(),
                 m.getSourcesJson(),
-                m.getActionsJson()
-        );
+                m.getActionsJson());
     }
 }
