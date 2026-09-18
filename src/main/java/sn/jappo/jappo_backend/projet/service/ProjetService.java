@@ -158,6 +158,25 @@ public ProjetResponse getProjetPrincipalByEntrepreneur(UUID entrepreneurId) {
 
     return mapToResponse(projet);
 }
+
+    @Transactional(readOnly = true)
+    public List<ProjetResponse> getProjetsForEntrepreneur(UUID entrepreneurId) {
+        UUID activeStructureId = getRequiredTenantId();
+
+        // Vérifier que l'entrepreneur appartient à la structure
+        MembreStructure membre = membreStructureRepository
+                .findByUserIdAndStructureId(entrepreneurId, activeStructureId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Entrepreneur non trouvé dans cette structure"));
+
+        // Récupérer tous les projets de cet entrepreneur (non archivés par défaut)
+        List<Projet> projets = projetRepository.findAllByStructureId(activeStructureId).stream()
+                .filter(p -> !p.isArchive())
+                .filter(p -> p.getEntrepreneur() != null && p.getEntrepreneur().getId().equals(entrepreneurId))
+                .toList();
+
+        return projets.stream().map(this::mapToResponse).toList();
+    }
+
     private UUID getRequiredTenantId() {
         UUID tenantId = TenantContext.getCurrentTenant();
         if (tenantId == null) {

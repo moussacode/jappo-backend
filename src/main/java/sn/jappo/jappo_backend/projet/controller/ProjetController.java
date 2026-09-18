@@ -61,6 +61,11 @@ public class ProjetController {
         return ResponseEntity.ok(projetService.getProjetPrincipalByEntrepreneur(entrepreneurId));
     }
 
+    @GetMapping("/mes-projets")
+    public ResponseEntity<List<ProjetResponse>> getMesProjets(@AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(projetService.getProjetsForEntrepreneur(currentUser.getId()));
+    }
+
 
    @PatchMapping("/{id}/nom")
     public ResponseEntity<ProjetResponse> updateNomProjet(

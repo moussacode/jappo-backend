@@ -17,7 +17,7 @@ public class CorsConfig {
         CorsConfiguration config = new CorsConfiguration();
 
         config.setAllowCredentials(true);
-        config.setAllowedOrigins(List.of("http://localhost:4200"));
+        config.setAllowedOrigins(List.of("http://localhost:4200","http://192.168.1.52:4200","https://recoil-reverb-carless.ngrok-free.dev/"));
 
         // AUTORISER LES EN-TÊTES HTTP : On ajoute explicitement X-Structure-Id
         config.setAllowedHeaders(List.of(

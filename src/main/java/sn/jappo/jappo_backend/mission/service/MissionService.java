@@ -30,6 +30,7 @@ import sn.jappo.jappo_backend.structure.repository.StructureRepository;
 import sn.jappo.jappo_backend.user.entity.User;
 import sn.jappo.jappo_backend.user.repository.UserRepository;
 import sn.jappo.jappo_backend.events.MissionStatusChangedEvent;
+import sn.jappo.jappo_backend.livrable.repository.LivrableRepository;
 
 @Service
 public class MissionService {
@@ -42,6 +43,7 @@ public class MissionService {
     private final ProjetRepository projetRepository;
     private final UserRepository userRepository;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private final LivrableRepository livrableRepository;
 
     public MissionService(
             MissionCohorteRepository missionCohorteRepository,
@@ -51,7 +53,8 @@ public class MissionService {
             CohorteRepository cohorteRepository,
             ProjetRepository projetRepository,
             UserRepository userRepository,
-            org.springframework.context.ApplicationEventPublisher eventPublisher
+            org.springframework.context.ApplicationEventPublisher eventPublisher,
+            LivrableRepository livrableRepository
     ) {
         this.missionCohorteRepository = missionCohorteRepository;
         this.missionModeleRepository = missionModeleRepository;
@@ -61,6 +64,7 @@ public class MissionService {
         this.projetRepository = projetRepository;
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
+        this.livrableRepository = livrableRepository;
     }
 
     @Transactional
@@ -423,6 +427,15 @@ public MissionResponse updateMissionDetails(UUID missionProjetId, UpdateMissionR
             .orElseThrow(() -> new RuntimeException("Mission introuvable"));
 
     verifierNonArchiveMissionProjet(mp);
+
+    // Vérifier si un livrable a déjà été soumis pour cette mission
+    boolean hasSubmission = livrableRepository.hasLivrableForMission(missionProjetId, activeStructureId);
+    if (hasSubmission) {
+        throw new org.springframework.web.server.ResponseStatusException(
+            org.springframework.http.HttpStatus.CONFLICT,
+            "Cette mission ne peut plus être modifiée car un livrable a déjà été soumis."
+        );
+    }
 
     MissionCohorte mc = mp.getMissionCohorte();
     verifierNonArchiveMissionCohorte(mc);
