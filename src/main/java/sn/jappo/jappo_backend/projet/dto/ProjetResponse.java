@@ -22,5 +22,11 @@ public record ProjetResponse(
         LocalDateTime dateArchivage,
         // Statistiques de missions (calculées côté backend)
         Integer nombreMissionsTotal,
-        Integer nombreMissionsValidees
+        Integer nombreMissionsValidees,
+        // Dérivés de la cohorte active (null s'il n'y en a pas)
+        UUID parcoursId,
+        String nomParcours,
+        UUID phaseId,
+        String nomPhase,
+        Integer phaseOrdre
 ) {}

@@ -6,11 +6,14 @@ import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
+import sn.jappo.jappo_backend.meeting.exception.MeetingException;
+import sn.jappo.jappo_backend.projet.exception.PromotionBloqueeException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -18,6 +21,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> handleResponseStatusException(ResponseStatusException exception) {
         return build(HttpStatus.valueOf(exception.getStatusCode().value()), exception.getReason());
+    }
+
+    @ExceptionHandler(PromotionBloqueeException.class)
+    public ResponseEntity<Map<String, Object>> handlePromotionBloquee(PromotionBloqueeException exception) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("message", exception.getMessage());
+        body.put("missionsNonValidees", exception.getMissionsNonValidees());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -31,9 +43,23 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleHttpMessageNotReadableException(HttpMessageNotReadableException exception) {
+        String message = "Format de données invalide";
+        if (exception.getCause() instanceof IllegalArgumentException) {
+            message = "Format de données invalide: " + exception.getCause().getMessage();
+        }
+        return build(HttpStatus.BAD_REQUEST, message);
+    }
+
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<Map<String, Object>> handleAuthenticationException(AuthenticationException exception) {
         return build(HttpStatus.UNAUTHORIZED, "Identifiants invalides");
+    }
+
+    @ExceptionHandler(MeetingException.class)
+    public ResponseEntity<Map<String, Object>> handleMeetingException(MeetingException exception) {
+        return build(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
     @ExceptionHandler(IllegalStateException.class)

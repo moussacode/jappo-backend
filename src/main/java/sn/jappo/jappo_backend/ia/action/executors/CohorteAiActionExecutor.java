@@ -7,7 +7,6 @@ import sn.jappo.jappo_backend.ia.action.AiActionExecutor;
 import sn.jappo.jappo_backend.ia.action.AiActionType;
 import sn.jappo.jappo_backend.cohorte.dto.CreateCohorteRequest;
 import sn.jappo.jappo_backend.cohorte.dto.UpdateCohorteRequest;
-import sn.jappo.jappo_backend.cohorte.entity.PhaseParcours;
 import sn.jappo.jappo_backend.cohorte.entity.StatutCohorte;
 import sn.jappo.jappo_backend.cohorte.service.CohorteService;
 import sn.jappo.jappo_backend.user.entity.User;
@@ -75,20 +74,19 @@ public class CohorteAiActionExecutor implements AiActionExecutor {
         String description = getOptionalString(payload, "description");
         String dateDebutStr = getOptionalString(payload, "dateDebut");
         String dateFinStr = getOptionalString(payload, "dateFin");
-        String phaseStr = getOptionalString(payload, "phase");
+        UUID parcoursId = parseUuid(payload.get("parcoursId"), "parcoursId");
+        UUID phaseId = parseUuid(payload.get("phaseId"), "phaseId");
 
-        // Convertir les types
         LocalDate dateDebut = parseDate(dateDebutStr);
         LocalDate dateFin = parseDate(dateFinStr);
-        PhaseParcours phase = parsePhase(phaseStr);
 
-        // Construire le DTO métier existant
         CreateCohorteRequest request = new CreateCohorteRequest(
                 nom,
                 description,
                 dateDebut,
                 dateFin,
-                phase
+                parcoursId,
+                phaseId
         );
 
         // Déléguer au service métier existant
@@ -121,22 +119,21 @@ public class CohorteAiActionExecutor implements AiActionExecutor {
         String description = getOptionalString(payload, "description");
         String dateDebutStr = getOptionalString(payload, "dateDebut");
         String dateFinStr = getOptionalString(payload, "dateFin");
-        String phaseStr = getOptionalString(payload, "phase");
+        UUID parcoursId = parseUuid(payload.get("parcoursId"), "parcoursId");
+        UUID phaseId = parseUuid(payload.get("phaseId"), "phaseId");
         String statutStr = getOptionalString(payload, "statut");
 
-        // Convertir les types
         LocalDate dateDebut = parseDate(dateDebutStr);
         LocalDate dateFin = parseDate(dateFinStr);
-        PhaseParcours phase = parsePhase(phaseStr);
         StatutCohorte statut = parseStatut(statutStr);
 
-        // Construire le DTO métier existant
         UpdateCohorteRequest request = new UpdateCohorteRequest(
                 nom,
                 description,
                 dateDebut,
                 dateFin,
-                phase,
+                parcoursId,
+                phaseId,
                 statut
         );
 
@@ -198,15 +195,15 @@ public class CohorteAiActionExecutor implements AiActionExecutor {
         }
     }
 
-    private PhaseParcours parsePhase(String value) {
-        if (value == null || value.isBlank()) {
+    private UUID parseUuid(Object value, String fieldName) {
+        if (value == null || value.toString().isBlank()) {
             return null;
         }
         try {
-            return PhaseParcours.valueOf(value.toUpperCase());
+            return UUID.fromString(value.toString());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Phase invalide : " + value + ". Valeurs valides : DECVERTE, LANCEMENT, ACCELERATION, CROISSANCE");
+                    fieldName + " doit être un UUID valide");
         }
     }
 

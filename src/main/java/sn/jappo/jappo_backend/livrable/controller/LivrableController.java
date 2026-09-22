@@ -24,7 +24,7 @@ import sn.jappo.jappo_backend.livrable.dto.EvaluateLivrableRequest;
 import sn.jappo.jappo_backend.livrable.dto.LivrableResponse;
 import sn.jappo.jappo_backend.livrable.dto.SoumettreVersionRequest;
 import sn.jappo.jappo_backend.livrable.dto.UpdateLivrableRequest;
-import sn.jappo.jappo_backend.livrable.service.FileStorageService;
+import sn.jappo.jappo_backend.common.service.FileStorageService;
 import sn.jappo.jappo_backend.livrable.service.LivrableService;
 
 @RestController
@@ -59,6 +59,11 @@ public class LivrableController {
         return ResponseEntity.ok(livrableService.evaluateLivrable(id, request));
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<LivrableResponse> getLivrableById(@PathVariable UUID id) {
+        return ResponseEntity.ok(livrableService.getLivrableById(id));
+    }
+
     @GetMapping("/mission/{missionProjetId}")
     public ResponseEntity<List<LivrableResponse>> getLivrablesByMission(@PathVariable UUID missionProjetId) {
         return ResponseEntity.ok(livrableService.getLivrablesByMission(missionProjetId));
@@ -75,7 +80,7 @@ public class LivrableController {
         if (structureId == null) {
             throw new IllegalStateException("Aucune structure active sélectionnée (en-tête X-Structure-Id manquant)");
         }
-        String url = fileStorageService.store(file, structureId);
+        String url = fileStorageService.store(file, structureId, "livrables");
         return ResponseEntity.ok(Map.of("url", url));
     }
 

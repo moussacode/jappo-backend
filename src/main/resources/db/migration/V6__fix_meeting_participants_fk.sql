@@ -1,0 +1,13 @@
+-- ============================================================
+-- V6 : Correction de la FK meeting_participants.user_id
+-- ============================================================
+
+-- La correction de la FK a déjà été effectuée lors de
+-- l'exécution partielle précédente de cette migration.
+--
+-- État attendu :
+-- meeting_participants.user_id
+--        -> membres_structures.id
+--
+-- Cette migration est conservée vide afin que Flyway puisse
+-- enregistrer V6 comme appliquée après le repair.

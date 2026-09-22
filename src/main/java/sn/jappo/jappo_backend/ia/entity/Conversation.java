@@ -55,6 +55,19 @@ private UUID id;
     @Column(name = "contexte_json", columnDefinition = "TEXT")
     private String contexteJson = "{}";
 
+    /**
+     * Titre de la conversation pour le renommage.
+     * Peut être null si non défini par l'utilisateur.
+     */
+    @Column(name = "titre", length = 255)
+    private String titre;
+
+    /**
+     * Indique si la conversation est archivée (masquée de la liste principale).
+     */
+    @Column(name = "archivee", nullable = false)
+    private Boolean archivee = false;
+
     @CreationTimestamp
     @Column(name = "date_creation", nullable = false, updatable = false)
     private LocalDateTime dateCreation;
@@ -62,6 +75,13 @@ private UUID id;
     @UpdateTimestamp
     @Column(name = "date_modification", nullable = false)
     private LocalDateTime dateModification;
+
+    /**
+     * Date de dernière activité (envoi de message).
+     * Permet de trier les conversations par activité récente.
+     */
+    @Column(name = "date_derniere_activite")
+    private LocalDateTime dateDerniereActivite;
 
     @OneToMany(mappedBy = "conversation", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("dateEnvoi ASC")
