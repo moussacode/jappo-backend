@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 import sn.jappo.jappo_backend.meeting.exception.MeetingException;
+import sn.jappo.jappo_backend.projet.exception.PromotionBloqueeException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -20,6 +21,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> handleResponseStatusException(ResponseStatusException exception) {
         return build(HttpStatus.valueOf(exception.getStatusCode().value()), exception.getReason());
+    }
+
+    @ExceptionHandler(PromotionBloqueeException.class)
+    public ResponseEntity<Map<String, Object>> handlePromotionBloquee(PromotionBloqueeException exception) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("message", exception.getMessage());
+        body.put("missionsNonValidees", exception.getMissionsNonValidees());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

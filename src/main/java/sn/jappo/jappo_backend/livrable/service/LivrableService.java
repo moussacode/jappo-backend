@@ -24,8 +24,10 @@ import sn.jappo.jappo_backend.livrable.entity.StatutLivrable;
 import sn.jappo.jappo_backend.livrable.entity.TypeLivrable;
 import sn.jappo.jappo_backend.livrable.repository.LivrableRepository;
 import sn.jappo.jappo_backend.mission.dto.UpdateStatutMissionRequest;
+import sn.jappo.jappo_backend.mission.entity.MissionCohorte;
 import sn.jappo.jappo_backend.mission.entity.MissionProjet;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
+import sn.jappo.jappo_backend.mission.repository.MissionCohorteRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
 import sn.jappo.jappo_backend.mission.service.MissionService;
 import sn.jappo.jappo_backend.structure.entity.Structure;
@@ -42,19 +44,22 @@ public class LivrableService {
     private final StructureRepository structureRepository;
     private final MissionService missionService;
     private final ApplicationEventPublisher eventPublisher;
+    private final MissionCohorteRepository missionCohorteRepository;
 
     public LivrableService(
             LivrableRepository livrableRepository,
             MissionProjetRepository missionProjetRepository,
             StructureRepository structureRepository,
             MissionService missionService,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            MissionCohorteRepository missionCohorteRepository
     ) {
         this.livrableRepository = livrableRepository;
         this.missionProjetRepository = missionProjetRepository;
         this.structureRepository = structureRepository;
         this.missionService = missionService;
         this.eventPublisher = eventPublisher;
+        this.missionCohorteRepository = missionCohorteRepository;
     }
 
     @Transactional
@@ -93,6 +98,14 @@ public class LivrableService {
         // Passer automatiquement la mission au statut SOUMIS lors du dépôt du livrable
         if (missionProjet.getStatut() == StatutMission.A_FAIRE || missionProjet.getStatut() == StatutMission.A_REVOIR) {
             missionService.updateStatut(missionProjet.getId(), new UpdateStatutMissionRequest(StatutMission.SOUMIS));
+        }
+
+        // Verrouillage structural de la MissionCohorte à la première soumission
+        MissionCohorte mc = missionProjet.getMissionCohorte();
+        if (mc != null && !mc.isVerrouillee()) {
+            mc.setVerrouillee(true);
+            mc.setDateVerrouillage(LocalDateTime.now());
+            missionCohorteRepository.save(mc);
         }
 
         // Publier l'événement DELIVERABLE_SUBMITTED

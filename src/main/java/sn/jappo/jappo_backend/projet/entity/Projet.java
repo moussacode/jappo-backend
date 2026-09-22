@@ -42,14 +42,23 @@ public class Projet {
 
     private Integer scoreMaturite = 0;
 
+    /**
+     * Statut simplifié : ACTIF, DIPLOME, ABANDONNE.
+     * La phase est déduite de la cohorte active, jamais du statut.
+     */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private StatutProjet statut = StatutProjet.EN_INCUBATION;
+    private StatutProjet statut = StatutProjet.ACTIF;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "entrepreneur_id")
     private User entrepreneur;
 
+    /**
+     * Copie dénormalisée de la participation active.
+     * Écrite UNIQUEMENT par ParticipationService.
+     * Ne jamais mettre à null — un projet sans cohorte n'est jamais promu.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cohorte_id")
     private Cohorte cohorte;
@@ -63,10 +72,9 @@ public class Projet {
 
     /**
      * Archivage : axe indépendant de {@code statut}. Un projet peut être archivé quelle
-     * que soit sa phase (y compris DIPLOME) — ce n'est pas un échec du projet (ABANDONNE),
-     * seulement une décision de l'incubateur de le figer. Les données associées (missions,
-     * livrables, historique) restent intactes et consultables ; seules les nouvelles
-     * opérations actives sont bloquées (voir ProjetService).
+     * que soit sa phase (y compris DIPLOME). Les données associées (missions, livrables,
+     * historique) restent intactes et consultables ; seules les nouvelles opérations
+     * actives sont bloquées.
      */
     @Column(nullable = false)
     private boolean archive = false;

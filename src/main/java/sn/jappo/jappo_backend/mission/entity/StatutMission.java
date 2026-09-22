@@ -4,7 +4,6 @@ public enum StatutMission {
     A_FAIRE,
     EN_COURS,
     SOUMIS,
-    VALIDE,
-    VALIDEE,
+    VALIDE,   // Fusionné : VALIDEE et VALIDE → VALIDE
     A_REVOIR
 }

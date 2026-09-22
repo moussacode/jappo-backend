@@ -32,6 +32,8 @@ import sn.jappo.jappo_backend.user.repository.UserRepository;
 import sn.jappo.jappo_backend.events.MissionStatusChangedEvent;
 import sn.jappo.jappo_backend.livrable.repository.LivrableRepository;
 
+import sn.jappo.jappo_backend.ressource.entity.Ressource;
+
 @Service
 public class MissionService {
 
@@ -44,6 +46,7 @@ public class MissionService {
     private final UserRepository userRepository;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final LivrableRepository livrableRepository;
+    
 
     public MissionService(
             MissionCohorteRepository missionCohorteRepository,
@@ -55,6 +58,7 @@ public class MissionService {
             UserRepository userRepository,
             org.springframework.context.ApplicationEventPublisher eventPublisher,
             LivrableRepository livrableRepository
+            
     ) {
         this.missionCohorteRepository = missionCohorteRepository;
         this.missionModeleRepository = missionModeleRepository;
@@ -65,6 +69,7 @@ public class MissionService {
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
         this.livrableRepository = livrableRepository;
+       
     }
 
     @Transactional
@@ -89,6 +94,8 @@ public class MissionService {
             nouveauModele.setDescription(request.description() != null ? request.description().trim() : null);
             nouveauModele.setPrioriteParDefaut(request.priorite() != null ? request.priorite() : PrioriteMission.MOYENNE);
             nouveauModele.setStructure(structure);
+            
+           
             MissionModele savedModele = missionModeleRepository.save(nouveauModele);
             missionCohorte.setModele(savedModele);
         } else if (request.modeleId() != null) {
@@ -96,6 +103,8 @@ public class MissionService {
                     .orElse(null);
             missionCohorte.setModele(modeleExistant);
         }
+
+      
 
         if (request.cohorteId() != null) {
             Cohorte cohorte = cohorteRepository.findByIdAndStructureId(request.cohorteId(), activeStructureId)
@@ -223,7 +232,7 @@ public class MissionService {
             
             // Calculer les statistiques
             int nombreValides = (int) suivis.stream()
-                    .filter(mp -> mp.getStatut() == StatutMission.VALIDE || mp.getStatut() == StatutMission.VALIDEE)
+                    .filter(mp -> mp.getStatut() == StatutMission.VALIDE)
                     .count();
             
             int nombreEnRevue = (int) suivis.stream()
@@ -255,11 +264,14 @@ public class MissionService {
                     nomCohorte,
                     mc.getStructure() != null ? mc.getStructure().getId() : null,
                     mc.getDateCreation(),
-                    suivis.size(), // nombreProjetsConcernes
+                    suivis.size(),
                     nombreValides,
                     nombreEnRevue,
                     nombreEnRetard,
                     nombreAFaire,
+                    mc.isVerrouillee(),
+                    mc.getDateVerrouillage(),
+                    mc.getRessources().stream().map(r -> r.getId()).toList(),
                     suivisIndividuels
             );
             
@@ -329,6 +341,7 @@ public class MissionService {
         mp.setProjet(p);
         mp.setStatut(StatutMission.A_FAIRE);
         mp.setStructure(s);
+        
 
         if (assigneAId != null) {
             User user = userRepository.findById(assigneAId).orElse(null);
@@ -342,7 +355,7 @@ public class MissionService {
         List<MissionProjet> missions = missionProjetRepository.findAllByProjetIdAndStructureId(projetId, structureId);
         if (missions.isEmpty()) return;
 
-        long validees = missions.stream().filter(m -> m.getStatut() == StatutMission.VALIDE || m.getStatut() == StatutMission.VALIDEE).count();
+        long validees = missions.stream().filter(m -> m.getStatut() == StatutMission.VALIDE).count();
         int score = (int) Math.round(((double) validees / missions.size()) * 100);
 
         projetRepository.findByIdAndStructureId(projetId, structureId).ifPresent(projet -> {
@@ -428,17 +441,29 @@ public MissionResponse updateMissionDetails(UUID missionProjetId, UpdateMissionR
 
     verifierNonArchiveMissionProjet(mp);
 
-    // Vérifier si un livrable a déjà été soumis pour cette mission
-    boolean hasSubmission = livrableRepository.hasLivrableForMission(missionProjetId, activeStructureId);
-    if (hasSubmission) {
-        throw new org.springframework.web.server.ResponseStatusException(
-            org.springframework.http.HttpStatus.CONFLICT,
-            "Cette mission ne peut plus être modifiée car un livrable a déjà été soumis."
-        );
-    }
-
     MissionCohorte mc = mp.getMissionCohorte();
     verifierNonArchiveMissionCohorte(mc);
+
+    // Vérification du verrouillage structural :
+    // la mission est verrouillée si au moins un entrepreneur de la cohorte a soumis
+    if (mc.isVerrouillee()) {
+        throw new org.springframework.web.server.ResponseStatusException(
+            org.springframework.http.HttpStatus.CONFLICT,
+            "Cette mission est verrouillée car un entrepreneur de la cohorte a déjà effectué une soumission."
+        );
+    }
+    // Vérification en temps réel (au cas où le verrou n'a pas encore été posé)
+    boolean hasSoumission = livrableRepository.existsSoumissionForMissionCohorte(mc.getId());
+    if (hasSoumission) {
+        // Poser le verrou automatiquement si pas encore fait
+        mc.setVerrouillee(true);
+        mc.setDateVerrouillage(java.time.LocalDateTime.now());
+        missionCohorteRepository.save(mc);
+        throw new org.springframework.web.server.ResponseStatusException(
+            org.springframework.http.HttpStatus.CONFLICT,
+            "Cette mission est verrouillée car un entrepreneur de la cohorte a déjà effectué une soumission."
+        );
+    }
 
     if (request.titre() != null) mc.setTitre(request.titre());
     if (request.description() != null) mc.setDescription(request.description());

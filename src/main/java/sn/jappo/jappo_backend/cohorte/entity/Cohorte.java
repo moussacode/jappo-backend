@@ -17,6 +17,8 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import sn.jappo.jappo_backend.structure.entity.Structure;
+import sn.jappo.jappo_backend.parcours.entity.Parcours;
+import sn.jappo.jappo_backend.parcours.entity.Phase;
 
 @Getter
 @Setter
@@ -42,10 +44,15 @@ public class Cohorte {
     @Column(nullable = false)
     private StatutCohorte statut = StatutCohorte.PLANIFIEE;
 
+    /** Parcours obligatoire — validé au niveau service (400 si absent) */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "parcours_id", nullable = false)
+    private Parcours parcours;
 
-    @Enumerated(EnumType.STRING)
-@Column(nullable = false)
-private PhaseParcours phase = PhaseParcours.PRE_INCUBATION;
+    /** Phase du parcours obligatoire — validée au niveau service (400 si absente) */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "phase_id", nullable = false)
+    private Phase phase;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "structure_id", nullable = false)

@@ -22,6 +22,8 @@ import sn.jappo.jappo_backend.meeting.exception.MeetingException;
 import sn.jappo.jappo_backend.meeting.livekit.LiveKitRoomClient;
 import sn.jappo.jappo_backend.meeting.repository.MeetingParticipantRepository;
 import sn.jappo.jappo_backend.meeting.repository.MeetingRepository;
+import sn.jappo.jappo_backend.projet.entity.Projet;
+import sn.jappo.jappo_backend.projet.repository.ProjetRepository;
 import sn.jappo.jappo_backend.structure.entity.MembreStructure;
 import sn.jappo.jappo_backend.structure.entity.RoleMembreStructure;
 import sn.jappo.jappo_backend.structure.repository.MembreStructureRepository;
@@ -46,6 +48,7 @@ public class MeetingService {
     private final StructureRepository structureRepository;
     private final UserRepository userRepository;
     private final CohorteRepository cohorteRepository;
+    private final ProjetRepository projetRepository;
     private final LiveKitRoomClient liveKitRoomClient;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -58,6 +61,7 @@ public class MeetingService {
             StructureRepository structureRepository,
             UserRepository userRepository,
             CohorteRepository cohorteRepository,
+            ProjetRepository projetRepository,
             LiveKitRoomClient liveKitRoomClient,
             ApplicationEventPublisher eventPublisher
     ) {
@@ -67,6 +71,7 @@ public class MeetingService {
         this.structureRepository = structureRepository;
         this.userRepository = userRepository;
         this.cohorteRepository = cohorteRepository;
+        this.projetRepository = projetRepository;
         this.liveKitRoomClient = liveKitRoomClient;
         this.eventPublisher = eventPublisher;
     }
@@ -124,11 +129,23 @@ public class MeetingService {
             cohort = cohorteRepository.findByIdAndStructureId(request.cohortId(), structureId)
                     .orElseThrow(() -> new MeetingException("Cohorte non trouvée dans cette structure"));
 
-            // Résoudre automatiquement les entrepreneurs de la cohorte
-            List<MembreStructure> allEntrepreneurs = membreStructureRepository.findByStructureIdAndRole(structureId, RoleMembreStructure.ENTREPRENEUR);
-            List<MembreStructure> cohortEntrepreneurs = allEntrepreneurs.stream()
-                    .filter(m -> m.getCohorte() != null && m.getCohorte().getId().equals(request.cohortId()))
-                    .toList();
+            // Entrepreneurs des projets actifs de la cohorte (pas le champ dénormalisé MembreStructure.cohorte)
+            List<Projet> projetsActifs = projetRepository
+                    .findAllByCohorteIdAndStructureIdAndArchive(request.cohortId(), structureId, false);
+            List<MembreStructure> cohortEntrepreneurs = new ArrayList<>();
+            for (Projet projet : projetsActifs) {
+                if (projet.getEntrepreneur() == null) {
+                    continue;
+                }
+                membreStructureRepository
+                        .findByUserIdAndStructureId(projet.getEntrepreneur().getId(), structureId)
+                        .filter(m -> m.getRole() == RoleMembreStructure.ENTREPRENEUR)
+                        .ifPresent(m -> {
+                            if (cohortEntrepreneurs.stream().noneMatch(existant -> existant.getId().equals(m.getId()))) {
+                                cohortEntrepreneurs.add(m);
+                            }
+                        });
+            }
 
             if (cohortEntrepreneurs.isEmpty()) {
                 throw new MeetingException("Aucun entrepreneur trouvé dans cette cohorte");
@@ -138,18 +155,27 @@ public class MeetingService {
         }
 
         // 3. Générer un identifiant de room unique (seulement pour ONLINE)
-        String roomIdentifier = null;
-        if (request.mode() == MeetingMode.ONLINE) {
-            roomIdentifier = generateRoomIdentifier();
+        // 3. Déterminer l'identifiant de salle
+String roomIdentifier;
 
-            // 4. Créer la room LiveKit (seulement pour ONLINE)
-            try {
-                liveKitRoomClient.createRoom(roomIdentifier);
-            } catch (Exception e) {
-                throw new MeetingException("Impossible de créer la room LiveKit", e);
-            }
-        }
+if (request.mode() == MeetingMode.ONLINE) {
+    // Pour une réunion en ligne, générer une room LiveKit unique
+    roomIdentifier = generateRoomIdentifier();
 
+    try {
+        liveKitRoomClient.createRoom(roomIdentifier);
+    } catch (Exception e) {
+        throw new MeetingException("Impossible de créer la room LiveKit", e);
+    }
+
+} else {
+    // Pour une réunion présentielle, roomIdentifier correspond au nom de la salle
+    if (request.roomIdentifier() == null || request.roomIdentifier().isBlank()) {
+        throw new MeetingException("La salle est obligatoire pour une réunion en présentiel");
+    }
+
+    roomIdentifier = request.roomIdentifier().trim();
+}
         // 5. Créer la réunion
         Meeting meeting = new Meeting();
         meeting.setStructure(coach.getStructure());
@@ -207,9 +233,15 @@ public class MeetingService {
     }
 
     @Transactional(readOnly = true)
-    public List<MeetingResponse> getMeetings() {
+    public List<MeetingResponse> getMeetings(UUID cohorteId) {
         UUID structureId = getRequiredTenantId();
-        return meetingRepository.findAllByStructureId(structureId).stream()
+        List<Meeting> meetings = meetingRepository.findAllByStructureId(structureId);
+        if (cohorteId != null) {
+            meetings = meetings.stream()
+                    .filter(m -> m.getCohort() != null && cohorteId.equals(m.getCohort().getId()))
+                    .toList();
+        }
+        return meetings.stream()
                 .map(this::mapToResponse)
                 .toList();
     }
@@ -257,13 +289,17 @@ public class MeetingService {
         }
 
         // Générer le token LiveKit
-        boolean isHost = participant.getRole() == ParticipantRole.HOST;
-        String token = liveKitRoomClient.generateToken(
-                meeting.getRoomIdentifier(),
-                participant.getMembreStructure().getUser().getId(),
-                isHost
-        );
+        if (meeting.getMode() == MeetingMode.PRESENTIEL) {
+    throw new MeetingException("Cette réunion est en présentiel et ne nécessite pas de connexion LiveKit");
+}
 
+boolean isHost = participant.getRole() == ParticipantRole.HOST;
+
+String token = liveKitRoomClient.generateToken(
+        meeting.getRoomIdentifier(),
+        participant.getMembreStructure().getUser().getId(),
+        isHost
+);
         return new JoinMeetingResponse(
                 meeting.getRoomIdentifier(),
                 liveKitRoomClient.getHost(),
@@ -302,8 +338,10 @@ public class MeetingService {
         }
 
         // Supprimer la room LiveKit
-        liveKitRoomClient.deleteRoom(meeting.getRoomIdentifier());
-
+        // Supprimer la room LiveKit uniquement pour les réunions en ligne
+if (meeting.getMode() == MeetingMode.ONLINE) {
+    liveKitRoomClient.deleteRoom(meeting.getRoomIdentifier());
+}
         // Mettre à jour le statut de la réunion
         meeting.setStatus(MeetingStatus.ENDED);
         meetingRepository.save(meeting);

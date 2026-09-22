@@ -58,8 +58,10 @@ public class MeetingController {
     }
 
     @GetMapping
-    public ResponseEntity<List<MeetingResponse>> getMeetings() {
-        return ResponseEntity.ok(meetingService.getMeetings());
+    public ResponseEntity<List<MeetingResponse>> getMeetings(
+            @RequestParam(required = false) UUID cohorteId
+    ) {
+        return ResponseEntity.ok(meetingService.getMeetings(cohorteId));
     }
 
     @GetMapping("/my")

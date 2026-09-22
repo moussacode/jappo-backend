@@ -1,6 +1,6 @@
 package sn.jappo.jappo_backend.dashboard.dto;
 
-import java.util.UUID;
+import java.util.List;
 
 public record DashboardStatsResponse(
     long totalEntrepreneurs,
@@ -9,5 +9,7 @@ public record DashboardStatsResponse(
     long totalCohortes,
     int scoreMaturiteMoyen,
     long projetsAttention,
-    long livrablesEnAttente
+    long livrablesEnAttente,
+    List<ProjetsParPhaseResponse> projetsParPhase,
+    long projetsEnRetard
 ) {}

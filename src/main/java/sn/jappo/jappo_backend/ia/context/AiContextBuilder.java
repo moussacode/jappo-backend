@@ -138,7 +138,7 @@ public class AiContextBuilder {
                             c.getId(), c.getNom(), c.getStatut().name(), nbProjets,
                             c.getDateDebut() != null ? c.getDateDebut().format(DATE_FORMATTER) : null,
                             c.getDateFin() != null ? c.getDateFin().format(DATE_FORMATTER) : null,
-                            c.getPhase() != null ? c.getPhase().name() : null
+                            c.getPhase() != null ? c.getPhase().getNom() : null
                     );
                 })
                 .toList();
@@ -160,7 +160,7 @@ public class AiContextBuilder {
                 cohorte.getId(), cohorte.getNom(), cohorte.getStatut().name(), nbProjets,
                 cohorte.getDateDebut() != null ? cohorte.getDateDebut().format(DATE_FORMATTER) : null,
                 cohorte.getDateFin() != null ? cohorte.getDateFin().format(DATE_FORMATTER) : null,
-                cohorte.getPhase() != null ? cohorte.getPhase().name() : null
+                cohorte.getPhase() != null ? cohorte.getPhase().getNom() : null
         );
         ctx.setCohortes(List.of(cohorteCtx));
 
@@ -204,7 +204,7 @@ public class AiContextBuilder {
                     cohorte.getId(), cohorte.getNom(), cohorte.getStatut().name(), 1,
                     cohorte.getDateDebut() != null ? cohorte.getDateDebut().format(DATE_FORMATTER) : null,
                     cohorte.getDateFin() != null ? cohorte.getDateFin().format(DATE_FORMATTER) : null,
-                    cohorte.getPhase() != null ? cohorte.getPhase().name() : null
+                    cohorte.getPhase() != null ? cohorte.getPhase().getNom() : null
             )));
         }
 
@@ -246,8 +246,6 @@ public class AiContextBuilder {
             int nbTotal = (int) missionProjetRepository.countByProjetIdAndStructureId(p.getId(), structureId);
             int nbValidees = (int) missionProjetRepository.countByProjetIdAndStructureIdAndStatut(
                     p.getId(), structureId, StatutMission.VALIDE
-            ) + (int) missionProjetRepository.countByProjetIdAndStructureIdAndStatut(
-                    p.getId(), structureId, StatutMission.VALIDEE
             );
             long livrablesEnAttente = livrableRepository.countByProjetIdAndStructureIdAndStatut(
                     p.getId(), structureId, StatutLivrable.EN_ATTENTE

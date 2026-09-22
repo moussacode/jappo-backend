@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record CreateMeetingRequest(
+
     @NotBlank(message = "Le titre est obligatoire")
     String title,
 
@@ -31,13 +32,17 @@ public record CreateMeetingRequest(
 
     String address,
 
+    String roomIdentifier,
+
     @NotNull(message = "La date de planification est obligatoire")
     LocalDateTime scheduledAt,
 
     @NotNull(message = "La durée est obligatoire")
     @Positive(message = "La durée doit être positive")
     Integer durationMinutes
+
 ) {
+
     @JsonCreator
     public static CreateMeetingRequest create(
             @JsonProperty("title") String title,
@@ -48,6 +53,7 @@ public record CreateMeetingRequest(
             @JsonProperty("participantId") String participantId,
             @JsonProperty("location") String location,
             @JsonProperty("address") String address,
+            @JsonProperty("roomIdentifier") String roomIdentifier,
             @JsonProperty("scheduledAt") String scheduledAt,
             @JsonProperty("durationMinutes") Integer durationMinutes
     ) {
@@ -60,6 +66,7 @@ public record CreateMeetingRequest(
                 participantId != null ? UUID.fromString(participantId) : null,
                 location,
                 address,
+                roomIdentifier,
                 LocalDateTime.parse(scheduledAt),
                 durationMinutes
         );

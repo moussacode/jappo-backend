@@ -1,8 +1,8 @@
 package sn.jappo.jappo_backend.cohorte.dto;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
-import sn.jappo.jappo_backend.cohorte.entity.PhaseParcours;
 import sn.jappo.jappo_backend.cohorte.entity.StatutCohorte;
 
 public record UpdateCohorteRequest(
@@ -10,6 +10,7 @@ public record UpdateCohorteRequest(
         String description,
         LocalDate dateDebut,
         LocalDate dateFin,
-        PhaseParcours phase,
+        UUID parcoursId,
+        UUID phaseId,
         StatutCohorte statut
 ) {}

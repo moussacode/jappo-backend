@@ -69,6 +69,7 @@ class HttpAiServiceTest {
         AiService.AiResponse response = httpAiService.generateResponse(question, context, history);
 
         // Assert
+        assertThat(response.success()).isTrue();
         assertThat(response.content()).isEqualTo("Voici les projets disponibles...");
         assertThat(response.model()).isEqualTo("gpt-4o");
     }
@@ -89,9 +90,10 @@ class HttpAiServiceTest {
         // Act
         AiService.AiResponse response = httpAiService.generateResponse(question, context, history);
 
-        // Assert
-        assertThat(response.content()).contains("Erreur: aucune réponse");
-        assertThat(response.model()).isEqualTo("unknown");
+        // Assert : repli métier, sans détail technique exposé au client
+        assertThat(response.success()).isFalse();
+        assertThat(response.content()).contains("n'a pas pu générer de réponse exploitable");
+        assertThat(response.model()).isEqualTo("unavailable");
     }
 
     @Test
@@ -110,9 +112,11 @@ class HttpAiServiceTest {
         // Act
         AiService.AiResponse response = httpAiService.generateResponse(question, context, history);
 
-        // Assert
-        assertThat(response.content()).contains("Erreur lors de l'appel au service IA");
-        assertThat(response.model()).isEqualTo("error");
+        // Assert : indisponibilité générique, jamais la cause technique
+        assertThat(response.success()).isFalse();
+        assertThat(response.content()).contains("temporairement indisponible");
+        assertThat(response.content()).doesNotContain("Service unavailable");
+        assertThat(response.model()).isEqualTo("unavailable");
     }
 
     @Test

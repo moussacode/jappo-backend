@@ -20,6 +20,7 @@ import lombok.Getter;
 import lombok.Setter;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 
+
 @Getter
 @Setter
 @Table(name = "missions_modeles")
@@ -43,6 +44,8 @@ public class MissionModele {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "structure_id", nullable = false)
     private Structure structure;
+
+    
 
     @CreationTimestamp
     private LocalDateTime dateCreation;

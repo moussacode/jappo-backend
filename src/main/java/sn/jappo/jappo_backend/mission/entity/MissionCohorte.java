@@ -2,6 +2,8 @@ package sn.jappo.jappo_backend.mission.entity;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
@@ -14,12 +16,15 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import lombok.Getter;
 import lombok.Setter;
 import sn.jappo.jappo_backend.cohorte.entity.Cohorte;
+import sn.jappo.jappo_backend.ressource.entity.Ressource;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 
 @Getter
@@ -56,6 +61,19 @@ public class MissionCohorte {
     @JoinColumn(name = "modele_id")
     private MissionModele modele;
 
+  
+    /**
+     * Ressources pédagogiques attachées à cette mission de cohorte.
+     * Table de jointure : mission_cohorte_ressources
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "mission_cohorte_ressources",
+            joinColumns = @JoinColumn(name = "mission_cohorte_id"),
+            inverseJoinColumns = @JoinColumn(name = "ressource_id")
+    )
+    private Set<Ressource> ressources = new HashSet<>();
+
     @CreationTimestamp
     private LocalDateTime dateCreation;
 
@@ -69,4 +87,15 @@ public class MissionCohorte {
     private boolean archive = false;
 
     private LocalDateTime dateArchivage;
+
+    /**
+     * Verrouillage structural : une fois qu'au moins un entrepreneur de la cohorte
+     * a soumis un livrable pour cette mission, la définition (titre, description,
+     * consignes, ressources, étape) ne peut plus être modifiée.
+     * Le verrouillage est posé par le backend lors de la première soumission.
+     */
+    @Column(nullable = false)
+    private boolean verrouillee = false;
+
+    private LocalDateTime dateVerrouillage;
 }
