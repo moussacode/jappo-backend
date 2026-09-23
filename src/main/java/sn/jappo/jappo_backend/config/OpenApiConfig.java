@@ -8,8 +8,6 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-
-
 @Configuration
 public class OpenApiConfig {
 
@@ -26,6 +24,8 @@ public class OpenApiConfig {
                 )
                 .components(
                         new Components()
+
+                                // JWT
                                 .addSecuritySchemes(
                                         "bearerAuth",
                                         new SecurityScheme()
@@ -33,10 +33,23 @@ public class OpenApiConfig {
                                                 .scheme("bearer")
                                                 .bearerFormat("JWT")
                                 )
+
+                                // Tenant actif
+                                .addSecuritySchemes(
+                                        "structureHeader",
+                                        new SecurityScheme()
+                                                .type(SecurityScheme.Type.APIKEY)
+                                                .in(SecurityScheme.In.HEADER)
+                                                .name("X-Structure-Id")
+                                                .description(
+                                                        "UUID de la structure active"
+                                                )
+                                )
                 )
                 .addSecurityItem(
                         new SecurityRequirement()
                                 .addList("bearerAuth")
+                                .addList("structureHeader")
                 );
     }
 }

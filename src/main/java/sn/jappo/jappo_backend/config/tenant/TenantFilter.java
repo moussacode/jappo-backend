@@ -35,9 +35,12 @@ public class TenantFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
-        return request.getRequestURI().startsWith("/api/auth/");
-    }
+protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+    String uri = request.getRequestURI();
+    return uri.startsWith("/api/auth/")
+            
+            || uri.startsWith("/api/super-admin/");
+}
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
