@@ -127,6 +127,20 @@ protected void doFilterInternal(
 
     List<GrantedAuthority> authorities = new ArrayList<>();
 
+    if (user.getRoleGlobal() != null) {
+        authorities.add(
+                new SimpleGrantedAuthority(
+                        user.getRoleGlobal().name()
+                )
+        );
+
+        authorities.add(
+                new SimpleGrantedAuthority(
+                        "ROLE_" + user.getRoleGlobal().name()
+                )
+        );
+    }
+
     String tenantHeader = request.getHeader(TENANT_HEADER);
 
     log.info("=== JWT AUTH DEBUG ===");

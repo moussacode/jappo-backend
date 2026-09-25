@@ -104,6 +104,7 @@ public class AuthController {
                 user.getNom(),
                 user.getEmail(),
                 user.isEmailVerified(),
+                user.getRoleGlobal(),
                 token
         );
 
@@ -190,7 +191,7 @@ private LoginResponse construireReponse(User user) {
     String token = jwtService.generateToken(user);
     return new LoginResponse(
             user.getId(), user.getPrenom(), user.getNom(),
-            user.getEmail(), user.isEmailVerified(), token
+            user.getEmail(), user.isEmailVerified(),  user.getRoleGlobal(), token
     );
 }
 }

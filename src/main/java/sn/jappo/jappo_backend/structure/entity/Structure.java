@@ -2,7 +2,8 @@ package sn.jappo.jappo_backend.structure.entity;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
-
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
 import org.hibernate.annotations.CreationTimestamp;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -55,6 +56,9 @@ public class Structure {
     @JoinColumn(name = "proprietaire_id", nullable = false)
     
     private User proprietaire;
+    @Enumerated(EnumType.STRING)
+@Column(nullable = false)
+private StatutStructure statut = StatutStructure.ACTIVE;
 
     @CreationTimestamp
     private LocalDateTime dateCreation;

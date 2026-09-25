@@ -5,6 +5,9 @@ import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
 
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -36,6 +39,10 @@ public class User {
     private String password;
 
     private boolean emailVerified = false;
+
+    @Enumerated(EnumType.STRING)
+@Column(nullable = false)
+private RoleGlobal roleGlobal = RoleGlobal.USER;
 
     @CreationTimestamp
     private LocalDateTime dateCreation;

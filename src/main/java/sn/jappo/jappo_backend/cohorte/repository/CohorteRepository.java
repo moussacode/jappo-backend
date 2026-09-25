@@ -34,4 +34,9 @@ public interface CohorteRepository extends JpaRepository<Cohorte, UUID> {
     /** Vérifie si une cohorte a des projets actifs (via participations). */
     @Query("SELECT COUNT(p) > 0 FROM ParticipationCohorte p WHERE p.cohorte.id = :cohorteId AND p.dateSortie IS NULL")
     boolean hasActiveProjects(@Param("cohorteId") UUID cohorteId);
+
+    long countByStructureIdAndStatut(
+        UUID structureId,
+        StatutCohorte statut
+);
 }
