@@ -10,6 +10,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import sn.jappo.jappo_backend.user.entity.RoleGlobal;
 
 import sn.jappo.jappo_backend.structure.entity.MembreStructure;
 import sn.jappo.jappo_backend.structure.entity.StatutMembre;
@@ -35,9 +36,14 @@ public class TenantFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
-        return request.getRequestURI().startsWith("/api/auth/");
-    }
+protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+    String uri = request.getRequestURI();
+    return uri.startsWith("/api/auth/")
+            
+            || uri.startsWith("/api/super-admin/")
+            
+             ;
+}
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -54,24 +60,37 @@ public class TenantFilter extends OncePerRequestFilter {
                 return;
             }
 
-            User currentUser = getAuthenticatedUser();
+           User currentUser = getAuthenticatedUser();
 
-            if (currentUser != null) {
-                Optional<MembreStructure> membership =
-                        membreStructureRepository.findByUserIdAndStructureId(currentUser.getId(), tenantId);
+if (currentUser != null) {
 
-                boolean estMembreActif = membership.isPresent()
-                        && membership.get().getStatut() == StatutMembre.ACCEPTE;
+    // SUPER_ADMIN : accès global, pas de membership obligatoire
+    if (currentUser.getRoleGlobal() == RoleGlobal.SUPER_ADMIN) {
+        TenantContext.setCurrentTenant(tenantId);
 
-                if (!estMembreActif) {
-                    writeError(response, HttpServletResponse.SC_FORBIDDEN,
-                            "Vous n'êtes pas membre de cette structure.");
-                    return;
-                }
-            }
+    } else {
 
-            TenantContext.setCurrentTenant(tenantId);
+        Optional<MembreStructure> membership =
+                membreStructureRepository.findByUserIdAndStructureId(
+                        currentUser.getId(),
+                        tenantId
+                );
+
+        boolean estMembreActif = membership.isPresent()
+                && membership.get().getStatut() == StatutMembre.ACCEPTE;
+
+        if (!estMembreActif) {
+            writeError(
+                    response,
+                    HttpServletResponse.SC_FORBIDDEN,
+                    "Vous n'êtes pas membre de cette structure."
+            );
+            return;
         }
+
+        TenantContext.setCurrentTenant(tenantId);
+    }
+}}
 
         try {
             filterChain.doFilter(request, response);

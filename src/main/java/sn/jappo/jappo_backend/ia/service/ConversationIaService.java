@@ -1,5 +1,8 @@
 package sn.jappo.jappo_backend.ia.service;
 
+
+import sn.jappo.jappo_backend.abonnement.service.PlanLimiteService;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
@@ -54,29 +57,35 @@ public class ConversationIaService {
     private final AiService aiService;
     private final AiActionService aiActionService;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final PlanLimiteService planLimiteService;
 
     public ConversationIaService(
-            ConversationRepository conversationRepository,
-            MessageRepository messageRepository,
-            StructureRepository structureRepository,
-            UserRepository userRepository,
-            AiContextBuilder aiContextBuilder,
-            AiService aiService,
-            AiActionService aiActionService) {
-        this.conversationRepository = conversationRepository;
-        this.messageRepository = messageRepository;
-        this.structureRepository = structureRepository;
-        this.userRepository = userRepository;
-        this.aiContextBuilder = aiContextBuilder;
-        this.aiService = aiService;
-        this.aiActionService = aiActionService;
-    }
+        ConversationRepository conversationRepository,
+        MessageRepository messageRepository,
+        StructureRepository structureRepository,
+        UserRepository userRepository,
+        AiContextBuilder aiContextBuilder,
+        AiService aiService,
+        AiActionService aiActionService,
+        PlanLimiteService planLimiteService) {
+
+    this.conversationRepository = conversationRepository;
+    this.messageRepository = messageRepository;
+    this.structureRepository = structureRepository;
+    this.userRepository = userRepository;
+    this.aiContextBuilder = aiContextBuilder;
+    this.aiService = aiService;
+    this.aiActionService = aiActionService;
+    this.planLimiteService = planLimiteService;
+}
 
     // ── Création d'une conversation ──────────────────────────────────────────
 
     @Transactional
     public ConversationResponse createConversation(User coach, CreateConversationRequest request) {
         UUID structureId = getRequiredTenantId();
+
+         planLimiteService.verifierAssistantIA(structureId);
 
         Structure structure = structureRepository.findById(structureId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Structure introuvable"));

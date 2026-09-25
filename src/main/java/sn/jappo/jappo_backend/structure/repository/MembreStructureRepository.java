@@ -31,4 +31,7 @@ public interface MembreStructureRepository extends JpaRepository<MembreStructure
     List<MembreStructure> findByStructureIdAndRole(UUID structureId, RoleMembreStructure role);
 
     Optional<MembreStructure> findByUserIdAndStructureId(UUID userId, UUID structureId);
+
+
+    long countByStructureId(UUID structureId);
 }

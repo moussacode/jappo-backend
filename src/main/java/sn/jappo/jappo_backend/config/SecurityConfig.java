@@ -21,13 +21,16 @@ import sn.jappo.jappo_backend.config.tenant.TenantFilter;
 
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity // Permet d'utiliser @PreAuthorize sur les contrôleurs
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final TenantFilter tenantFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, TenantFilter tenantFilter) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            TenantFilter tenantFilter
+    ) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.tenantFilter = tenantFilter;
     }
@@ -39,30 +42,53 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
         http
             .csrf(csrf -> csrf.disable())
+
+            // CORS géré par Spring Security
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+
+            .sessionManagement(session ->
+                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+
             .authorizeHttpRequests(auth -> auth
-                // Requêtes CORS Preflight
+
+                // Preflight CORS
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // Routes publiques d'authentification et d'invitation
+                // Auth publique
                 .requestMatchers(
-    "/api/auth/login", "/api/auth/register", "/api/auth/invitation-info", "/api/auth/google","/api/auth/google/inscription",
-    "/api/auth/accepter-invitation", "/api/auth/forgot-password", "/api/auth/reset-password","/ws/**"
-).permitAll()
-.requestMatchers("/api/auth/**").authenticated()
-.requestMatchers("/swagger-ui/**","/swagger-ui.html","/v3/api-docs/**").permitAll()
-                // Tout le reste nécessite un JWT valide
+                    "/api/auth/login",
+                    "/api/auth/register",
+                    "/api/auth/invitation-info",
+                    "/api/auth/google",
+                    "/api/auth/google/inscription",
+                    "/api/auth/accepter-invitation",
+                    "/api/auth/forgot-password",
+                    "/api/auth/reset-password",
+                    "/ws/**"
+                ).permitAll()
+
+                .requestMatchers("/api/auth/**").authenticated()
+
+                // Swagger
+                .requestMatchers(
+                    "/swagger-ui/**",
+                    "/swagger-ui.html",
+                    "/v3/api-docs/**"
+                ).permitAll()
+
+                // Tout le reste
                 .anyRequest().authenticated()
             )
-            //  1. Exécuter d'abord JwtAuthenticationFilter pour authentifier l'utilisateur
+
             .addFilterBefore(
                 jwtAuthenticationFilter,
                 UsernamePasswordAuthenticationFilter.class
             )
-            //  2. Exécuter ensuite TenantFilter pour extraire X-Structure-Id
+
             .addFilterAfter(
                 tenantFilter,
                 JwtAuthenticationFilter.class
@@ -73,17 +99,44 @@ public class SecurityConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:4200","https://recoil-reverb-carless.ngrok-free.dev/"));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        
-        // Déclarer explicitement tous les en-têtes autorisés, y compris X-Structure-Id
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Structure-Id", "Accept", "X-Requested-With"));
-        config.setExposedHeaders(List.of("Authorization", "X-Structure-Id"));
+
+        config.setAllowedOrigins(List.of(
+            "http://localhost:4200",
+            "https://recoil-reverb-carless.ngrok-free.dev",
+            "https://jappo-frontend.vercel.app"
+        ));
+
+        config.setAllowedMethods(List.of(
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "OPTIONS"
+        ));
+
+        config.setAllowedHeaders(List.of(
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "X-Requested-With",
+            "X-Structure-Id"
+        ));
+
+        config.setExposedHeaders(List.of(
+            "Authorization",
+            "X-Structure-Id"
+        ));
+
         config.setAllowCredentials(true);
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        UrlBasedCorsConfigurationSource source =
+            new UrlBasedCorsConfigurationSource();
+
         source.registerCorsConfiguration("/**", config);
+
         return source;
     }
 }
