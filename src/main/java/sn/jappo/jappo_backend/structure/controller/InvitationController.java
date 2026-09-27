@@ -49,7 +49,7 @@ public class InvitationController {
      * GET /api/invitations/share-link?role=COACH&regenerate=false
      */
     @GetMapping("/share-link")
-    @PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
+    @PreAuthorize("hasAuthority('ADMIN_STRUCTURE')")
     public ResponseEntity<?> getLienInvitation(
             @RequestParam(name = "role", defaultValue = "COACH") String roleStr,
             @RequestParam(name = "regenerate", defaultValue = "false") boolean regenerate

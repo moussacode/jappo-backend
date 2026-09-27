@@ -38,5 +38,21 @@ public interface CohorteRepository extends JpaRepository<Cohorte, UUID> {
     long countByStructureIdAndStatut(
         UUID structureId,
         StatutCohorte statut
-);
+    );
+
+    /** Cohortes d'une structure assignées à un coach spécifique. */
+    @Query("SELECT c FROM Cohorte c JOIN c.coachs coach WHERE c.structure.id = :structureId AND coach.id = :coachId")
+    List<Cohorte> findAllByStructureIdAndCoachId(@Param("structureId") UUID structureId, @Param("coachId") UUID coachId);
+
+    /** Cohortes non archivées d'une structure assignées à un coach. */
+    @Query("SELECT c FROM Cohorte c JOIN c.coachs coach WHERE c.structure.id = :structureId AND coach.id = :coachId AND c.statut <> :statut")
+    List<Cohorte> findAllByStructureIdAndCoachIdAndStatutNot(@Param("structureId") UUID structureId, @Param("coachId") UUID coachId, @Param("statut") StatutCohorte statut);
+
+    /** Cohortes d'une structure avec un statut spécifique assignées à un coach. */
+    @Query("SELECT c FROM Cohorte c JOIN c.coachs coach WHERE c.structure.id = :structureId AND coach.id = :coachId AND c.statut = :statut")
+    List<Cohorte> findAllByStructureIdAndCoachIdAndStatut(@Param("structureId") UUID structureId, @Param("coachId") UUID coachId, @Param("statut") StatutCohorte statut);
+
+    /** Vérifie si un coach est affecté à une cohorte donnée dans une structure. */
+    @Query("SELECT COUNT(c) > 0 FROM Cohorte c JOIN c.coachs coach WHERE c.id = :cohorteId AND c.structure.id = :structureId AND coach.id = :coachId")
+    boolean isCoachAssignedToCohorte(@Param("cohorteId") UUID cohorteId, @Param("structureId") UUID structureId, @Param("coachId") UUID coachId);
 }

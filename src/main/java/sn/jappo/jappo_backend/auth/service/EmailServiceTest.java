@@ -1,12 +1,16 @@
 
 package sn.jappo.jappo_backend.auth.service;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 @Service
 public class EmailServiceTest {
+
+    @Value("${app.frontend.url:http://localhost:4200}")
+    private String frontendUrl;
 
     private final JavaMailSender mailSender;
 
@@ -60,7 +64,7 @@ public class EmailServiceTest {
 
     // NOUVELLE MÉTHODE : Envoi du Magic Link d'invitation
     public void sendInvitationEmail(String email, String nom, String token, String nomStructure) {
-        String magicLink = "http://localhost:4200/auth/accept-invitation?token=" + token;
+        String magicLink = frontendUrl + "/auth/accept-invitation?token=" + token;
 
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(email);

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import sn.jappo.jappo_backend.structure.dto.CreateStructureRequest;
 import sn.jappo.jappo_backend.structure.dto.StructureMembershipResponse;
 import sn.jappo.jappo_backend.structure.dto.StructureResponse;
+import sn.jappo.jappo_backend.structure.entity.StatutMembre;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.MembreStructureRepository;
 import sn.jappo.jappo_backend.structure.service.StructureService;
@@ -56,6 +57,7 @@ public ResponseEntity<List<StructureMembershipResponse>> getMyStructures(
     List<StructureMembershipResponse> memberships =
             membreStructureRepository.findAllByUser(user)
                     .stream()
+                    .filter(membre -> membre.getStatut() == StatutMembre.ACCEPTE)
                     .map(membre -> {
                         Structure structure = membre.getStructure();
 

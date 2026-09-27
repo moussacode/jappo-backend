@@ -11,6 +11,7 @@ import sn.jappo.jappo_backend.user.dto.InviterEntrepreneurRequest;
 import sn.jappo.jappo_backend.user.service.UserService;
 import sn.jappo.jappo_backend.user.dto.EntrepreneurResponse;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import sn.jappo.jappo_backend.user.dto.UpdateUserProfileRequest;
 import sn.jappo.jappo_backend.user.dto.UserResponse;
@@ -45,6 +46,7 @@ public class UserController {
      * POST /api/users/inviter
      */
     @PostMapping("/inviter")
+    @PreAuthorize("hasAuthority('ADMIN_STRUCTURE')")
     public ResponseEntity<InvitationResultResponse> inviterEntrepreneurs(
             @Valid @RequestBody InviterEntrepreneurRequest request
     ) {

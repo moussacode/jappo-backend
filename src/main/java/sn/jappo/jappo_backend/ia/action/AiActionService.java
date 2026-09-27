@@ -232,6 +232,16 @@ public List<Map<String, Object>> enregistrerPropositions(
                     "Seuls un coach ou un administrateur de la structure peuvent confirmer une action IA");
         }
 
+        // Règle stricte pour le rôle COACH : aucune action administrative sur les cohortes n'est permise
+        if (membre.getRole() == RoleMembreStructure.COACH) {
+            if (action.getType() == AiActionType.CREATE_COHORTE
+                    || action.getType() == AiActionType.UPDATE_COHORTE
+                    || action.getType() == AiActionType.ARCHIVE_COHORTE) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Le rôle COACH ne peut pas effectuer d'actions administratives sur les cohortes.");
+            }
+        }
+
         return action;
     }
 

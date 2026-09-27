@@ -8,30 +8,32 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import sn.jappo.jappo_backend.assistance.dto.AssistanceRequest;
 
+import org.springframework.beans.factory.annotation.Value;
 import java.util.Map;
 
 @Service
 public class AssistanceService {
 
-    private static final String N8N_BASE_URL = "http://127.0.0.1:5678";
+    private final String n8nBaseUrl;
     private static final String N8N_WEBHOOK_PATH = "/webhook/jappo-support";
 
     private final RestClient restClient;
 
-    public AssistanceService() {
+    public AssistanceService(@Value("${n8n.base-url:http://127.0.0.1:5678}") String n8nBaseUrl) {
+        this.n8nBaseUrl = n8nBaseUrl;
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(3000); // 3s
         requestFactory.setReadTimeout(8000);    // 8s
 
         this.restClient = RestClient.builder()
-                .baseUrl(N8N_BASE_URL)
+                .baseUrl(n8nBaseUrl)
                 .requestFactory(requestFactory)
                 .build();
     }
 
     public Map<String, Object> envoyerDemande(AssistanceRequest request) {
         System.out.println(">>> APPEL N8N");
-        System.out.println(">>> URL : " + N8N_BASE_URL + N8N_WEBHOOK_PATH);
+        System.out.println(">>> URL : " + n8nBaseUrl + N8N_WEBHOOK_PATH);
         System.out.println(">>> BODY ENVOYÉ : email=" + request.email() + " | message=" + request.message());
 
         try {
