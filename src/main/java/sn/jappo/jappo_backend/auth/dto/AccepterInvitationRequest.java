@@ -7,7 +7,10 @@ public record AccepterInvitationRequest(
         @NotBlank(message = "Le token d'invitation est obligatoire")
         String token,
 
-        
         @Size(min = 8, message = "Le mot de passe doit contenir au moins 8 caractères")
-        String nouveauMotDePasse
+        String nouveauMotDePasse,
+
+        String email,
+        String prenom,
+        String nom
 ) {}

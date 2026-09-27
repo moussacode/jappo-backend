@@ -46,6 +46,12 @@ public class AiContext {
     // Données livrables (détails complets)
     private List<LivrableContext> livrables = new ArrayList<>();
 
+    // Données parcours (structure globale)
+    private List<ParcoursContext> parcours = new ArrayList<>();
+
+    // Données phases (structure globale)
+    private List<PhaseContext> phases = new ArrayList<>();
+
     // Statistiques agrégées utiles au LLM (évite d'envoyer toutes les entités)
     private long nombreTotalEntrepreneurs;
     private long nombreTotalProjets;
@@ -161,6 +167,26 @@ public class AiContext {
         }
     }
 
+    public static class ParcoursContext {
+        public UUID id;
+        public String nom;
+
+        public ParcoursContext(UUID id, String nom) {
+            this.id = id;
+            this.nom = nom;
+        }
+    }
+
+    public static class PhaseContext {
+        public UUID id;
+        public String nom;
+
+        public PhaseContext(UUID id, String nom) {
+            this.id = id;
+            this.nom = nom;
+        }
+    }
+
     // ── Getters / Setters ────────────────────────────────────────────────────
 
     public UUID getStructureId() { return structureId; }
@@ -195,6 +221,12 @@ public class AiContext {
 
     public List<LivrableContext> getLivrables() { return livrables; }
     public void setLivrables(List<LivrableContext> livrables) { this.livrables = livrables; }
+
+    public List<ParcoursContext> getParcours() { return parcours; }
+    public void setParcours(List<ParcoursContext> parcours) { this.parcours = parcours; }
+
+    public List<PhaseContext> getPhases() { return phases; }
+    public void setPhases(List<PhaseContext> phases) { this.phases = phases; }
 
     public long getNombreTotalEntrepreneurs() { return nombreTotalEntrepreneurs; }
     public void setNombreTotalEntrepreneurs(long n) { this.nombreTotalEntrepreneurs = n; }

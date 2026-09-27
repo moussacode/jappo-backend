@@ -1,9 +1,13 @@
 package sn.jappo.jappo_backend.auth.service;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class EmailService {
+
+    @Value("${app.frontend.url:http://localhost:4200}")
+    private String frontendUrl;
 
     public void sendVerificationCode(String email, String code) {
         System.out.println("\n========================================================================");
@@ -21,7 +25,7 @@ public class EmailService {
 
     // Uniquement affichage du lien d'invitation dans le terminal (aucun envoi d'email)
     public void sendInvitationEmail(String email, String nom, String token, String nomStructure) {
-        String magicLink = "http://localhost:4200/auth/accept-invitation?token=" + token;
+        String magicLink = frontendUrl + "/auth/accept-invitation?token=" + token;
 
         System.out.println("\n========================================================================");
         System.out.println("📩 [CONSOLE ONLY] Invitation créée pour : " + email);

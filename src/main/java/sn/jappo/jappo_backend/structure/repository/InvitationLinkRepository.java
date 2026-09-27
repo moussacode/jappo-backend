@@ -16,6 +16,11 @@ import java.util.UUID;
 @Repository
 public interface InvitationLinkRepository extends JpaRepository<InvitationLink, UUID> {
 
+    // Recherche par token direct
+    Optional<InvitationLink> findByToken(String token);
+
+    Optional<InvitationLink> findByTokenAndActifTrueAndExpiresAtAfter(String token, LocalDateTime now);
+
     // Résout l'erreur de recherche du lien actif non expiré
     Optional<InvitationLink> findByStructureIdAndRoleAndActifTrueAndExpiresAtAfter(
             UUID structureId, RoleMembreStructure role, LocalDateTime now

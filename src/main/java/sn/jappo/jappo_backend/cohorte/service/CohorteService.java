@@ -33,12 +33,15 @@ import sn.jappo.jappo_backend.structure.repository.StructureRepository;
 import sn.jappo.jappo_backend.user.entity.User;
 import sn.jappo.jappo_backend.user.repository.UserRepository;
 import sn.jappo.jappo_backend.auth.service.EmailService;
-
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -109,6 +112,10 @@ public class CohorteService {
         cohorte.setStatut(StatutCohorte.PLANIFIEE);
         cohorte.setStructure(structure);
 
+        if (request.coachIds() != null && !request.coachIds().isEmpty()) {
+            cohorte.setCoachs(validerEtRecupererCoachs(request.coachIds(), activeStructureId));
+        }
+
         appliquerParcoursEtPhase(
                 cohorte,
                 request.parcoursId(),
@@ -133,6 +140,14 @@ public class CohorteService {
     @Transactional(readOnly = true)
     public List<CohorteResponse> getCohortesForActiveStructure() {
         UUID activeStructureId = getRequiredTenantId();
+        User user = getCurrentUser();
+        if (user != null && isCurrentUserCoachOnly(user, activeStructureId)) {
+            return cohorteRepository
+                    .findAllByStructureIdAndCoachId(activeStructureId, user.getId())
+                    .stream()
+                    .map(this::mapToResponse)
+                    .toList();
+        }
 
         return cohorteRepository
                 .findAllByStructureId(activeStructureId)
@@ -144,6 +159,18 @@ public class CohorteService {
     @Transactional(readOnly = true)
     public List<CohorteResponse> getActiveCohortesForActiveStructure() {
         UUID activeStructureId = getRequiredTenantId();
+        User user = getCurrentUser();
+        if (user != null && isCurrentUserCoachOnly(user, activeStructureId)) {
+            return cohorteRepository
+                    .findAllByStructureIdAndCoachIdAndStatutNot(
+                            activeStructureId,
+                            user.getId(),
+                            StatutCohorte.ARCHIVEE
+                    )
+                    .stream()
+                    .map(this::mapToResponse)
+                    .toList();
+        }
 
         return cohorteRepository
                 .findAllByStructureIdAndStatutNot(
@@ -165,6 +192,18 @@ public class CohorteService {
                         HttpStatus.NOT_FOUND,
                         "Cohorte introuvable ou accès non autorisé pour l'ID : " + id
                 ));
+
+        User user = getCurrentUser();
+        if (user != null && isCurrentUserCoachOnly(user, activeStructureId)) {
+            boolean isAssigned = cohorte.getCoachs() != null && cohorte.getCoachs().stream()
+                    .anyMatch(c -> c.getId().equals(user.getId()));
+            if (!isAssigned) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Accès refusé : vous n'êtes pas affecté à cette cohorte"
+                );
+            }
+        }
 
         return mapToResponse(cohorte);
     }
@@ -239,6 +278,10 @@ public class CohorteService {
             }
         }
 
+        if (request.coachIds() != null) {
+            cohorte.setCoachs(validerEtRecupererCoachs(request.coachIds(), activeStructureId));
+        }
+
         Cohorte saved = cohorteRepository.save(cohorte);
 
         if (request.statut() == StatutCohorte.TERMINEE
@@ -295,6 +338,18 @@ public class CohorteService {
             StatutCohorte statut
     ) {
         UUID activeStructureId = getRequiredTenantId();
+        User user = getCurrentUser();
+        if (user != null && isCurrentUserCoachOnly(user, activeStructureId)) {
+            return cohorteRepository
+                    .findAllByStructureIdAndCoachIdAndStatut(
+                            activeStructureId,
+                            user.getId(),
+                            statut
+                    )
+                    .stream()
+                    .map(this::mapToResponse)
+                    .toList();
+        }
 
         return cohorteRepository
                 .findAllByStructureIdAndStatut(
@@ -303,6 +358,73 @@ public class CohorteService {
                 )
                 .stream()
                 .map(this::mapToResponse)
+                .toList();
+    }
+
+    @Transactional
+    public CohorteResponse affecterCoachs(UUID id, List<UUID> coachIds) {
+        UUID activeStructureId = getRequiredTenantId();
+
+        Cohorte cohorte = cohorteRepository
+                .findByIdAndStructureId(id, activeStructureId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Cohorte introuvable"
+                ));
+
+        cohorte.setCoachs(validerEtRecupererCoachs(coachIds, activeStructureId));
+        Cohorte saved = cohorteRepository.save(cohorte);
+        return mapToResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CohorteResponse.CoachSummary> getCoachsDeCohorte(UUID id) {
+        UUID activeStructureId = getRequiredTenantId();
+
+        Cohorte cohorte = cohorteRepository
+                .findByIdAndStructureId(id, activeStructureId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Cohorte introuvable"
+                ));
+
+        User user = getCurrentUser();
+        if (user != null && isCurrentUserCoachOnly(user, activeStructureId)) {
+            boolean isAssigned = cohorte.getCoachs() != null && cohorte.getCoachs().stream()
+                    .anyMatch(c -> c.getId().equals(user.getId()));
+            if (!isAssigned) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Accès refusé : vous n'êtes pas affecté à cette cohorte"
+                );
+            }
+        }
+
+        return cohorte.getCoachs() != null
+                ? cohorte.getCoachs().stream()
+                        .map(u -> new CohorteResponse.CoachSummary(
+                                u.getId(),
+                                u.getPrenom() != null ? u.getPrenom() : "",
+                                u.getNom() != null ? u.getNom() : "",
+                                u.getEmail()
+                        ))
+                        .toList()
+                : List.of();
+    }
+
+    @Transactional(readOnly = true)
+    public List<CohorteResponse.CoachSummary> getCoachsDisponibles() {
+        UUID activeStructureId = getRequiredTenantId();
+
+        return membreStructureRepository.findByStructureIdAndRole(activeStructureId, RoleMembreStructure.COACH)
+                .stream()
+                .filter(m -> m.getStatut() == StatutMembre.ACCEPTE)
+                .map(m -> new CohorteResponse.CoachSummary(
+                        m.getUser().getId(),
+                        m.getUser().getPrenom() != null ? m.getUser().getPrenom() : "",
+                        m.getUser().getNom() != null ? m.getUser().getNom() : "",
+                        m.getUser().getEmail()
+                ))
                 .toList();
     }
 
@@ -557,6 +679,17 @@ public class CohorteService {
             );
         }
 
+        List<CohorteResponse.CoachSummary> coachSummaries = cohorte.getCoachs() != null
+                ? cohorte.getCoachs().stream()
+                        .map(u -> new CohorteResponse.CoachSummary(
+                                u.getId(),
+                                u.getPrenom() != null ? u.getPrenom() : "",
+                                u.getNom() != null ? u.getNom() : "",
+                                u.getEmail()
+                        ))
+                        .toList()
+                : List.of();
+
         return new CohorteResponse(
                 cohorte.getId(),
                 cohorte.getNom(),
@@ -571,7 +704,66 @@ public class CohorteService {
                         ? phase.getId()
                         : null,
                 phaseSummary,
-                cohorte.getStructure().getId()
+                cohorte.getStructure().getId(),
+                coachSummaries
         );
+    }
+
+    private User getCurrentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof User user) {
+            return user;
+        }
+        return null;
+    }
+
+    private boolean isCurrentUserCoachOnly(User currentUser, UUID structureId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            return false;
+        }
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN_STRUCTURE")
+                        || a.getAuthority().equals("ADMIN_STRUCTURE")
+                        || a.getAuthority().equals("ROLE_SUPER_ADMIN")
+                        || a.getAuthority().equals("SUPER_ADMIN"));
+        if (isAdmin) {
+            return false;
+        }
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_COACH")
+                        || a.getAuthority().equals("COACH"));
+    }
+
+    private Set<User> validerEtRecupererCoachs(List<UUID> coachIds, UUID structureId) {
+        if (coachIds == null || coachIds.isEmpty()) {
+            return new HashSet<>();
+        }
+        Set<User> coachs = new HashSet<>();
+        for (UUID coachId : coachIds) {
+            MembreStructure membre = membreStructureRepository
+                    .findByUserIdAndStructureId(coachId, structureId)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST,
+                            "L'utilisateur " + coachId + " n'est pas membre de cette structure"
+                    ));
+
+            if (membre.getRole() != RoleMembreStructure.COACH) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "L'utilisateur " + coachId + " n'a pas le rôle COACH dans cette structure"
+                    );
+            }
+
+            if (membre.getStatut() != StatutMembre.ACCEPTE) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "L'invitation du coach " + coachId + " n'a pas encore été acceptée"
+                );
+            }
+
+            coachs.add(membre.getUser());
+        }
+        return coachs;
     }
 }

@@ -23,6 +23,10 @@ import sn.jappo.jappo_backend.user.entity.User;
 import sn.jappo.jappo_backend.user.repository.UserRepository;
 import sn.jappo.jappo_backend.user.dto.InvitationResultResponse;
 import java.util.ArrayList;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @Service
 public class UserService {
@@ -120,47 +124,96 @@ public InvitationResultResponse inviterEntrepreneurs(InviterEntrepreneurRequest 
 
 
     @Transactional(readOnly = true)
-    public List<EntrepreneurResponse> getEntrepreneursByActiveStructure() {
-        UUID activeStructureId = getRequiredTenantId();
+public List<EntrepreneurResponse> getEntrepreneursByActiveStructure() {
 
-        List<MembreStructure> membres = membreStructureRepository.findByStructureIdAndRole(
-                activeStructureId, 
+    UUID activeStructureId = getRequiredTenantId();
+    User currentUser = getCurrentUser();
+
+    List<MembreStructure> membres;
+
+    if (currentUser != null && isCurrentUserCoachOnly(currentUser, activeStructureId)) {
+
+        membres = membreStructureRepository.findEntrepreneursByCoachAndStructure(
+                activeStructureId,
+                currentUser.getId(),
                 RoleMembreStructure.ENTREPRENEUR
         );
 
-        return membres.stream()
-                .map(m -> new EntrepreneurResponse(
-                        m.getUser().getId(),
-                        m.getUser().getPrenom(),
-                        m.getUser().getNom(),
-                        m.getUser().getEmail(),
-                        m.getCohorte() != null ? m.getCohorte().getId() : null,
-                        m.getCohorte() != null ? m.getCohorte().getNom() : null,
-                        m.getStatut().name(),
-                        m.getDateInvitation()
-                ))
-                .toList();
-    }
+    } else {
 
-    @Transactional(readOnly = true)
-    public EntrepreneurResponse getEntrepreneurById(UUID userId) {
-        UUID activeStructureId = getRequiredTenantId();
-
-        MembreStructure membre = membreStructureRepository.findByUserIdAndStructureId(userId, activeStructureId)
-                .orElseThrow(() -> new IllegalArgumentException("Entrepreneur introuvable dans cette structure."));
-
-        return new EntrepreneurResponse(
-                membre.getUser().getId(),
-                membre.getUser().getPrenom(),
-                membre.getUser().getNom(),
-                membre.getUser().getEmail(),
-                membre.getCohorte() != null ? membre.getCohorte().getId() : null,
-                membre.getCohorte() != null ? membre.getCohorte().getNom() : null,
-                membre.getStatut().name(),
-                membre.getDateInvitation()
+        membres = membreStructureRepository.findByStructureIdAndRole(
+                activeStructureId,
+                RoleMembreStructure.ENTREPRENEUR
         );
     }
 
+    return membres.stream()
+            .map(m -> new EntrepreneurResponse(
+                    m.getUser().getId(),
+                    m.getUser().getPrenom(),
+                    m.getUser().getNom(),
+                    m.getUser().getEmail(),
+                    m.getCohorte() != null
+                            ? m.getCohorte().getId()
+                            : null,
+                    m.getCohorte() != null
+                            ? m.getCohorte().getNom()
+                            : null,
+                    m.getStatut().name(),
+                    m.getDateInvitation()
+            ))
+            .toList();
+}
+   @Transactional(readOnly = true)
+public EntrepreneurResponse getEntrepreneurById(UUID userId) {
+
+    UUID activeStructureId = getRequiredTenantId();
+    User currentUser = getCurrentUser();
+
+    MembreStructure membre;
+
+    if (currentUser != null && isCurrentUserCoachOnly(currentUser, activeStructureId)) {
+
+        membre = membreStructureRepository
+                .findEntrepreneurByUserIdAndCoach(
+                        userId,
+                        activeStructureId,
+                        currentUser.getId(),
+                        RoleMembreStructure.ENTREPRENEUR
+                )
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Entrepreneur introuvable ou accès non autorisé"
+                ));
+
+    } else {
+
+        membre = membreStructureRepository
+                .findByUserIdAndStructureId(
+                        userId,
+                        activeStructureId
+                )
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Entrepreneur introuvable dans cette structure"
+                ));
+    }
+
+    return new EntrepreneurResponse(
+            membre.getUser().getId(),
+            membre.getUser().getPrenom(),
+            membre.getUser().getNom(),
+            membre.getUser().getEmail(),
+            membre.getCohorte() != null
+                    ? membre.getCohorte().getId()
+                    : null,
+            membre.getCohorte() != null
+                    ? membre.getCohorte().getNom()
+                    : null,
+            membre.getStatut().name(),
+            membre.getDateInvitation()
+    );
+}
     @Transactional
     public User updateProfile(UUID userId, sn.jappo.jappo_backend.user.dto.UpdateUserProfileRequest request) {
         User user = userRepository.findById(userId)
@@ -168,5 +221,31 @@ public InvitationResultResponse inviterEntrepreneurs(InviterEntrepreneurRequest 
         user.setPrenom(request.prenom().trim());
         user.setNom(request.nom().trim());
         return userRepository.save(user);
+    }
+
+    private User getCurrentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof User user) {
+            return user;
+        }
+        return null;
+    }
+
+    private boolean isCurrentUserCoachOnly(User currentUser, UUID structureId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            return false;
+        }
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN_STRUCTURE")
+                        || a.getAuthority().equals("ADMIN_STRUCTURE")
+                        || a.getAuthority().equals("ROLE_SUPER_ADMIN")
+                        || a.getAuthority().equals("SUPER_ADMIN"));
+        if (isAdmin) {
+            return false;
+        }
+        return auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_COACH")
+                        || a.getAuthority().equals("COACH"));
     }
 }

@@ -25,6 +25,7 @@ public class InvitationService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService; // 👈 Déclaration du service mail
+    private final String frontendUrl;
 
     public InvitationService(
             InvitationLinkRepository invitationLinkRepository,
@@ -32,7 +33,8 @@ public class InvitationService {
             StructureRepository structureRepository,
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            EmailService emailService // 👈 Injection dans le constructeur
+            EmailService emailService,
+            @org.springframework.beans.factory.annotation.Value("${app.frontend.url:http://localhost:4200}") String frontendUrl
     ) {
         this.invitationLinkRepository = invitationLinkRepository;
         this.membreStructureRepository = membreStructureRepository;
@@ -40,6 +42,7 @@ public class InvitationService {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
+        this.frontendUrl = frontendUrl;
     }
 
     // 1. Inviter un membre de l'équipe nominativement par email
@@ -238,6 +241,6 @@ public class InvitationService {
     }
 
     private String construireUrlLien(String token) {
-        return "http://localhost:4200/auth/accept-invitation?token=" + token;
+        return frontendUrl + "/auth/accept-invitation?token=" + token;
     }
 }

@@ -12,9 +12,12 @@ import sn.jappo.jappo_backend.mission.entity.MissionCohorte;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
 import sn.jappo.jappo_backend.mission.repository.MissionCohorteRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
+import sn.jappo.jappo_backend.parcours.repository.ParcoursRepository;
+import sn.jappo.jappo_backend.parcours.repository.PhaseRepository;
 import sn.jappo.jappo_backend.projet.entity.Projet;
 import sn.jappo.jappo_backend.projet.repository.ProjetRepository;
 import sn.jappo.jappo_backend.structure.entity.Structure;
+import sn.jappo.jappo_backend.structure.repository.MembreStructureRepository;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
 import sn.jappo.jappo_backend.user.entity.User;
 import sn.jappo.jappo_backend.user.repository.UserRepository;
@@ -22,6 +25,7 @@ import sn.jappo.jappo_backend.user.repository.UserRepository;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
+
 
 /**
  * Construit le AiContext à partir du ConversationContexte sélectionné par le coach
@@ -51,6 +55,9 @@ public class AiContextBuilder {
     private final MissionProjetRepository missionProjetRepository;
     private final LivrableRepository livrableRepository;
     private final UserRepository userRepository;
+    private final MembreStructureRepository membreStructureRepository; 
+    private final ParcoursRepository parcoursRepository;
+private final PhaseRepository phaseRepository;
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -61,7 +68,11 @@ public class AiContextBuilder {
             MissionCohorteRepository missionCohorteRepository,
             MissionProjetRepository missionProjetRepository,
             LivrableRepository livrableRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            MembreStructureRepository membreStructureRepository,
+            ParcoursRepository parcoursRepository,
+        PhaseRepository phaseRepository
+            
     ) {
         this.structureRepository = structureRepository;
         this.cohorteRepository = cohorteRepository;
@@ -70,6 +81,9 @@ public class AiContextBuilder {
         this.missionProjetRepository = missionProjetRepository;
         this.livrableRepository = livrableRepository;
         this.userRepository = userRepository;
+        this.membreStructureRepository = membreStructureRepository;
+        this.parcoursRepository = parcoursRepository;
+    this.phaseRepository = phaseRepository;
     }
 
     /**
@@ -115,36 +129,79 @@ public class AiContextBuilder {
 
     // ── Cas A : contexte global ──────────────────────────────────────────────
 
-    private void buildContexteGlobal(AiContext ctx, UUID structureId) {
-        ctx.setContextGlobal(true);
+ // ── Cas A : contexte global ──────────────────────────────────────────────
 
-        // Statistiques agrégées légères — ne pas charger toutes les entités
-        long entrepreneurs = userRepository.countEntrepreneursByStructureId(structureId);
-        long cohortes = cohorteRepository.countByStructureId(structureId);
-        long projets = projetRepository.countByStructureId(structureId);
-        long livrablesEnAttente = livrableRepository.countByStructureIdAndStatut(structureId, StatutLivrable.EN_ATTENTE);
+private void buildContexteGlobal(AiContext ctx, UUID structureId) {
+    ctx.setContextGlobal(true);
 
-        ctx.setNombreTotalEntrepreneurs(entrepreneurs);
-        ctx.setNombreTotalCohortes(cohortes);
-        ctx.setNombreTotalProjets(projets);
-        ctx.setLivrablesEnAttente(livrablesEnAttente);
+    // Statistiques agrégées (conservées, utiles pour un résumé rapide)
+    long entrepreneurs = membreStructureRepository.countEntrepreneursByStructureId(structureId);
+    long cohortesCount = cohorteRepository.countByStructureId(structureId);
+    long projetsCount = projetRepository.countByStructureId(structureId);
+    long livrablesEnAttente = livrableRepository.countByStructureIdAndStatut(structureId, StatutLivrable.EN_ATTENTE);
 
-        // Charger les cohortes avec leur nombre de projets (résumé, pas tout le détail)
-        List<Cohorte> allCohortes = cohorteRepository.findAllByStructureId(structureId);
-        List<AiContext.CohorteContext> cohortesCtx = allCohortes.stream()
-                .map(c -> {
-                    int nbProjets = (int) projetRepository.countByCohorteIdAndStructureId(c.getId(), structureId);
-                    return new AiContext.CohorteContext(
-                            c.getId(), c.getNom(), c.getStatut().name(), nbProjets,
-                            c.getDateDebut() != null ? c.getDateDebut().format(DATE_FORMATTER) : null,
-                            c.getDateFin() != null ? c.getDateFin().format(DATE_FORMATTER) : null,
-                            c.getPhase() != null ? c.getPhase().getNom() : null
-                    );
-                })
-                .toList();
-        ctx.setCohortes(cohortesCtx);
+    ctx.setNombreTotalEntrepreneurs(entrepreneurs);
+    ctx.setNombreTotalCohortes(cohortesCount);
+    ctx.setNombreTotalProjets(projetsCount);
+    ctx.setLivrablesEnAttente(livrablesEnAttente);
+
+    // Charger TOUTES les cohortes de la structure
+    List<Cohorte> allCohortes = cohorteRepository.findAllByStructureId(structureId);
+
+    List<AiContext.CohorteContext> cohortesCtx = allCohortes.stream()
+            .map(c -> {
+                int nbProjets = (int) projetRepository.countByCohorteIdAndStructureId(c.getId(), structureId);
+                return new AiContext.CohorteContext(
+                        c.getId(), c.getNom(), c.getStatut().name(), nbProjets,
+                        c.getDateDebut() != null ? c.getDateDebut().format(DATE_FORMATTER) : null,
+                        c.getDateFin() != null ? c.getDateFin().format(DATE_FORMATTER) : null,
+                        c.getPhase() != null ? c.getPhase().getNom() : null
+                );
+            })
+            .toList();
+    ctx.setCohortes(cohortesCtx);
+
+  
+
+    // NOUVEAU — Charger TOUS les projets (de toutes les cohortes)
+    List<Projet> allProjets = new java.util.ArrayList<>();
+    for (Cohorte c : allCohortes) {
+        allProjets.addAll(projetRepository.findAllByCohorteIdAndStructureId(c.getId(), structureId));
     }
+    ctx.setProjets(buildProjetsContext(allProjets, structureId));
 
+    // NOUVEAU — Charger TOUTES les missions (de toutes les cohortes)
+    List<AiContext.MissionContext> allMissions = new java.util.ArrayList<>();
+    for (Cohorte c : allCohortes) {
+        allMissions.addAll(buildMissionsContextForCohorte(c.getId(), structureId));
+    }
+    ctx.setMissions(allMissions);
+
+    // NOUVEAU — Charger TOUS les livrables (de toutes les cohortes)
+    List<AiContext.LivrableContext> allLivrables = new java.util.ArrayList<>();
+    for (Cohorte c : allCohortes) {
+        allLivrables.addAll(buildLivrablesContextForCohorte(c.getId(), structureId));
+    }
+    ctx.setLivrables(allLivrables);
+
+
+
+      // NOUVEAU — Charger les parcours actifs (non archivés) de la structure
+List<AiContext.ParcoursContext> parcoursCtx = parcoursRepository
+        .findByStructureIdAndArchiveFalse(structureId)
+        .stream()
+        .map(p -> new AiContext.ParcoursContext(p.getId(), p.getNom()))
+        .toList();
+ctx.setParcours(parcoursCtx);
+System.out.println("DEBUG parcours trouvés pour structure " + structureId + " : " + parcoursCtx.size());
+// NOUVEAU — Charger les phases actives (non archivées) de la structure
+List<AiContext.PhaseContext> phasesCtx = phaseRepository
+        .findAllByStructureIdAndArchiveFalseOrderByNom(structureId)
+        .stream()
+        .map(p -> new AiContext.PhaseContext(p.getId(), p.getNom()))
+        .toList();
+ctx.setPhases(phasesCtx);
+}
     // ── Cas B : cohorte sélectionnée ─────────────────────────────────────────
 
     private void buildContexteCohorte(AiContext ctx, UUID structureId, UUID cohorteId) {
