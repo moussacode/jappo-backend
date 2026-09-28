@@ -35,7 +35,7 @@ public class StructureEquipeController {
      * Récupérer la liste des membres de l'équipe avec le statut précis (ACCEPTE, EN_ATTENTE, EXPIRE)
      */
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
+    @PreAuthorize("hasAuthority('ADMIN_STRUCTURE')")
     public ResponseEntity<?> getMembresEquipe() {
         UUID structureId = TenantContext.getCurrentTenant();
         if (structureId == null) {

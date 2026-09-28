@@ -162,51 +162,112 @@ public class HttpAiService implements AiService {
     }
 
     private Map<String, Object> convertAiContextToMap(AiContext context) {
-        Map<String, Object> map = new HashMap<>();
-        map.put("structureId", context.getStructureId());
-        map.put("structureNom", context.getStructureNom());
-        map.put("contextGlobal", context.isContextGlobal());
-        map.put("nombreTotalEntrepreneurs", context.getNombreTotalEntrepreneurs());
-        map.put("nombreTotalProjets", context.getNombreTotalProjets());
-        map.put("nombreTotalCohortes", context.getNombreTotalCohortes());
-        map.put("livrablesEnAttente", context.getLivrablesEnAttente());
+    Map<String, Object> map = new HashMap<>();
+    map.put("structureId", context.getStructureId());
+    map.put("structureNom", context.getStructureNom());
+    map.put("contextGlobal", context.isContextGlobal());
+    map.put("nombreTotalEntrepreneurs", context.getNombreTotalEntrepreneurs());
+    map.put("nombreTotalProjets", context.getNombreTotalProjets());
+    map.put("nombreTotalCohortes", context.getNombreTotalCohortes());
+    map.put("livrablesEnAttente", context.getLivrablesEnAttente());
 
-        // Convert cohortes
-        List<Map<String, Object>> cohortes = context.getCohortes().stream()
-                .map(c -> {
-                    Map<String, Object> cohorteMap = new HashMap<>();
-                    cohorteMap.put("id", c.id);
-                    cohorteMap.put("nom", c.nom);
-                    cohorteMap.put("statut", c.statut);
-                    cohorteMap.put("nombreProjets", c.nombreProjets);
-                    return cohorteMap;
-                })
-                .collect(Collectors.toList());
-        map.put("cohortes", cohortes);
+    // Convert cohortes
+    List<Map<String, Object>> cohortes = context.getCohortes().stream()
+            .map(c -> {
+                Map<String, Object> cohorteMap = new HashMap<>();
+                cohorteMap.put("id", c.id);
+                cohorteMap.put("nom", c.nom);
+                cohorteMap.put("statut", c.statut);
+                cohorteMap.put("nombreProjets", c.nombreProjets);
+                cohorteMap.put("dateDebut", c.dateDebut);
+                cohorteMap.put("dateFin", c.dateFin);
+                cohorteMap.put("phase", c.phase);
+                return cohorteMap;
+            })
+            .collect(Collectors.toList());
+    map.put("cohortes", cohortes);
 
-        // Convert projets
-        List<Map<String, Object>> projets = context.getProjets().stream()
-                .map(p -> {
-                    Map<String, Object> projetMap = new HashMap<>();
-                    projetMap.put("id", p.id);
-                    projetMap.put("nom", p.nom);
-                    projetMap.put("statut", p.statut);
-                    projetMap.put("scoreMaturite", p.scoreMaturite);
-                    projetMap.put("cohorteId", p.cohorteId);
-                    projetMap.put("cohorteNom", p.cohorteNom);
-                    projetMap.put("entrepreneurId", p.entrepreneurId);
-                    projetMap.put("entrepreneurNom", p.entrepreneurNom);
-                    projetMap.put("nombreMissionsTotal", p.nombreMissionsTotal);
-                    projetMap.put("nombreMissionsValidees", p.nombreMissionsValidees);
-                    projetMap.put("nombreLivrablesEnAttente", p.nombreLivrablesEnAttente);
-                    return projetMap;
-                })
-                .collect(Collectors.toList());
-        map.put("projets", projets);
+    // Convert projets
+    List<Map<String, Object>> projets = context.getProjets().stream()
+            .map(p -> {
+                Map<String, Object> projetMap = new HashMap<>();
+                projetMap.put("id", p.id);
+                projetMap.put("nom", p.nom);
+                projetMap.put("statut", p.statut);
+                projetMap.put("scoreMaturite", p.scoreMaturite);
+                projetMap.put("cohorteId", p.cohorteId);
+                projetMap.put("cohorteNom", p.cohorteNom);
+                projetMap.put("entrepreneurId", p.entrepreneurId);
+                projetMap.put("entrepreneurNom", p.entrepreneurNom);
+                projetMap.put("nombreMissionsTotal", p.nombreMissionsTotal);
+                projetMap.put("nombreMissionsValidees", p.nombreMissionsValidees);
+                projetMap.put("nombreLivrablesEnAttente", p.nombreLivrablesEnAttente);
+                return projetMap;
+            })
+            .collect(Collectors.toList());
+    map.put("projets", projets);
 
-        return map;
-    }
+    // NOUVEAU — Convert missions
+    List<Map<String, Object>> missions = context.getMissions().stream()
+            .map(m -> {
+                Map<String, Object> missionMap = new HashMap<>();
+                missionMap.put("id", m.id);
+                missionMap.put("titre", m.titre);
+                missionMap.put("description", m.description);
+                missionMap.put("priorite", m.priorite);
+                missionMap.put("dateEcheance", m.dateEcheance);
+                missionMap.put("statut", m.statut);
+                missionMap.put("cohorteId", m.cohorteId);
+                missionMap.put("cohorteNom", m.cohorteNom);
+                missionMap.put("projetId", m.projetId);
+                missionMap.put("projetNom", m.projetNom);
+                return missionMap;
+            })
+            .collect(Collectors.toList());
+    map.put("missions", missions);
 
+    // NOUVEAU — Convert livrables
+    List<Map<String, Object>> livrables = context.getLivrables().stream()
+            .map(l -> {
+                Map<String, Object> livrableMap = new HashMap<>();
+                livrableMap.put("id", l.id);
+                livrableMap.put("nom", l.nom);
+                livrableMap.put("statut", l.statut);
+                livrableMap.put("dateSoumission", l.dateSoumission);
+                livrableMap.put("dateEvaluation", l.dateEvaluation);
+                livrableMap.put("missionId", l.missionId);
+                livrableMap.put("missionTitre", l.missionTitre);
+                livrableMap.put("projetId", l.projetId);
+                livrableMap.put("projetNom", l.projetNom);
+                return livrableMap;
+            })
+            .collect(Collectors.toList());
+    map.put("livrables", livrables);
+
+    // NOUVEAU — Convert parcours
+    List<Map<String, Object>> parcours = context.getParcours().stream()
+            .map(p -> {
+                Map<String, Object> parcoursMap = new HashMap<>();
+                parcoursMap.put("id", p.id);
+                parcoursMap.put("nom", p.nom);
+                return parcoursMap;
+            })
+            .collect(Collectors.toList());
+    map.put("parcours", parcours);
+
+    // NOUVEAU — Convert phases
+    List<Map<String, Object>> phases = context.getPhases().stream()
+            .map(p -> {
+                Map<String, Object> phaseMap = new HashMap<>();
+                phaseMap.put("id", p.id);
+                phaseMap.put("nom", p.nom);
+                return phaseMap;
+            })
+            .collect(Collectors.toList());
+    map.put("phases", phases);
+
+    return map;
+}
     private List<Map<String, Object>> convertHistoryToMap(List<Message> history) {
         return history.stream()
                 .map(m -> {

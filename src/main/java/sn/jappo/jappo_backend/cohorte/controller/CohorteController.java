@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import sn.jappo.jappo_backend.cohorte.dto.AffecterCoachsRequest;
 import sn.jappo.jappo_backend.cohorte.dto.CohorteResponse;
 import sn.jappo.jappo_backend.cohorte.dto.CreateCohorteRequest;
 import sn.jappo.jappo_backend.cohorte.dto.InviterEntrepreneursRequest;
@@ -44,13 +45,33 @@ public class CohorteController {
         return ResponseEntity.ok(cohorteService.getCohortesForActiveStructure());
     }
 
+    @GetMapping("/coachs-disponibles")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE')")
+    public ResponseEntity<List<CohorteResponse.CoachSummary>> getCoachsDisponibles() {
+        return ResponseEntity.ok(cohorteService.getCoachsDisponibles());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<CohorteResponse> getCohorteById(@PathVariable UUID id) {
         return ResponseEntity.ok(cohorteService.getCohorteById(id));
     }
 
+    @GetMapping("/{id}/coachs")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
+    public ResponseEntity<List<CohorteResponse.CoachSummary>> getCoachsDeCohorte(@PathVariable UUID id) {
+        return ResponseEntity.ok(cohorteService.getCoachsDeCohorte(id));
+    }
+
+    @PutMapping("/{id}/coachs")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE')")
+    public ResponseEntity<CohorteResponse> affecterCoachs(
+            @PathVariable UUID id,
+            @RequestBody AffecterCoachsRequest request) {
+        return ResponseEntity.ok(cohorteService.affecterCoachs(id, request.coachIds()));
+    }
+
     @PostMapping
-    // @PreAuthorize("hasRole('ADMIN_STRUCTURE')")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE')")
     public ResponseEntity<CohorteResponse> createCohorte(@RequestBody CreateCohorteRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(cohorteService.createCohorte(request));
     }

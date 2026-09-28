@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import sn.jappo.jappo_backend.livrable.dto.CreateLivrableRequest;
 import sn.jappo.jappo_backend.livrable.dto.EvaluateLivrableRequest;
@@ -53,6 +54,7 @@ public class LivrableController {
     }
 
     @PatchMapping("/{id}/evaluer")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
     public ResponseEntity<LivrableResponse> evaluateLivrable(
             @PathVariable UUID id,
             @RequestBody EvaluateLivrableRequest request) {
@@ -91,6 +93,7 @@ public class LivrableController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE')")
     public ResponseEntity<Void> deleteLivrable(@PathVariable UUID id) {
         livrableService.deleteLivrable(id);
         return ResponseEntity.noContent().build();

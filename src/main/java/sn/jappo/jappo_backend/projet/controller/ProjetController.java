@@ -30,7 +30,7 @@ public class ProjetController {
     // -----------------------------------------------------------------------
 
     @PostMapping
-    // @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
     public ResponseEntity<ProjetResponse> createProjet(@RequestBody CreateProjetRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(projetService.createProjet(request));
     }
@@ -75,13 +75,13 @@ public class ProjetController {
     }
 
     @GetMapping("/{id}/cohortes-eligibles")
-    // @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
     public ResponseEntity<List<CohorteResponse>> getCohortesEligibles(@PathVariable UUID id) {
         return ResponseEntity.ok(participationService.getCohortesEligibles(id));
     }
 
     @PostMapping("/{id}/promouvoir")
-    // @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
     public ResponseEntity<ProjetResponse> promouvoirProjet(
             @PathVariable UUID id,
             @RequestBody PromouvoirProjetRequest request,
