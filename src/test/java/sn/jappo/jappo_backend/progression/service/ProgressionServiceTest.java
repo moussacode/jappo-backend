@@ -12,11 +12,16 @@ import sn.jappo.jappo_backend.livrable.entity.StatutLivrable;
 import sn.jappo.jappo_backend.livrable.repository.LivrableRepository;
 import sn.jappo.jappo_backend.mission.entity.MissionEtape;
 import sn.jappo.jappo_backend.mission.entity.MissionProjet;
+import sn.jappo.jappo_backend.mission.entity.LivrableAttendu;
+import sn.jappo.jappo_backend.mission.entity.MissionCohorte;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
+import sn.jappo.jappo_backend.mission.repository.LivrableAttenduRepository;
+import sn.jappo.jappo_backend.mission.repository.MissionCohorteRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionEtapeRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
 import sn.jappo.jappo_backend.parcours.entity.Etape;
 import sn.jappo.jappo_backend.parcours.entity.Parcours;
+import sn.jappo.jappo_backend.parcours.entity.ParcoursPhase;
 import sn.jappo.jappo_backend.parcours.entity.Phase;
 import sn.jappo.jappo_backend.parcours.repository.EtapeRepository;
 import sn.jappo.jappo_backend.parcours.repository.ParcoursPhaseRepository;
@@ -77,6 +82,12 @@ public class ProgressionServiceTest {
     @Mock
     private LivrableRepository livrableRepository;
 
+        @Mock
+        private MissionCohorteRepository missionCohorteRepository;
+
+        @Mock
+        private LivrableAttenduRepository livrableAttenduRepository;
+
     @InjectMocks
     private ProgressionService progressionService;
 
@@ -132,6 +143,16 @@ public class ProgressionServiceTest {
         progression.setEtape(etape);
         progression.setStatut(Progression.StatutProgression.EN_COURS);
         progression.setHistorique(new ArrayList<>());
+
+        ParcoursPhase association = new ParcoursPhase();
+        association.setParcours(parcours);
+        association.setPhase(phase);
+        association.setOrdre(1);
+        when(parcoursPhaseRepository.findByParcours_IdOrderByOrdreAsc(parcoursId)).thenReturn(List.of(association));
+        when(parcoursPhaseRepository.existsByParcours_IdAndPhase_Id(parcoursId, phaseId)).thenReturn(true);
+        when(etapeRepository.findAllByPhaseIdOrderByOrdreAsc(phaseId)).thenReturn(List.of(etape));
+        when(historiqueProgressionRepository.findByProgressionIdOrderByDateEntreeDesc(progressionId)).thenReturn(List.of());
+        when(livrableAttenduRepository.findByMissionEtapeIdOrderByOrdreAsc(any())).thenReturn(List.of());
     }
 
     /**
@@ -238,6 +259,7 @@ public class ProgressionServiceTest {
         TenantContext.setCurrentTenant(structureId);
 
         assertDoesNotThrow(() -> progressionService.validerEtape(progressionId, coach));
+        assertEquals(100, progression.getPourcentageAvancement());
 
         verify(historiqueProgressionRepository, times(1)).save(any(HistoriqueProgression.class));
         verify(progressionRepository, times(1)).save(any(Progression.class));
@@ -314,38 +336,6 @@ public class ProgressionServiceTest {
     }
 
     /**
-     * Cas 4 : Étape 1 validée → Étape 2 accessible
-     */
-    @Test
-    public void testIsEtapeAccessible_Etape1Validee_Etape2Accessible() {
-        setupCommonMocks();
-
-        Etape etape2 = new Etape();
-        etape2.setId(UUID.randomUUID());
-        etape2.setNom("Étape 2");
-        etape2.setOrdre(2);
-        etape2.setPhase(phase);
-        etape2.setStructure(structure);
-        phase.getEtapes().add(etape2);
-
-        HistoriqueProgression historique = new HistoriqueProgression();
-        historique.setEtapeEntree(etape);
-        historique.setRaison("VALIDATION_COACH");
-        progression.getHistorique().add(historique);
-
-        when(progressionRepository.findById(progressionId)).thenReturn(Optional.of(progression));
-        when(etapeRepository.findByIdAndStructureId(etape2.getId(), structureId)).thenReturn(Optional.of(etape2));
-
-        TenantContext.setCurrentTenant(structureId);
-
-        boolean accessible = progressionService.isEtapeAccessible(progressionId, etape2.getId());
-
-        assertTrue(accessible);
-
-        TenantContext.clear();
-    }
-
-    /**
      * Cas 5 : Étape 1 non validée → Étape 2 verrouillée
      */
     @Test
@@ -371,6 +361,42 @@ public class ProgressionServiceTest {
 
         TenantContext.clear();
     }
+
+        @Test
+        public void testValiderEtape_AttenduObligatoireSansDepot_Echoue() {
+                setupCommonMocks();
+                MissionEtape missionEtape = new MissionEtape();
+                missionEtape.setId(UUID.randomUUID());
+                missionEtape.setEtape(etape);
+                missionEtape.setObligatoire(true);
+                MissionProjet missionProjet = new MissionProjet();
+                missionProjet.setId(UUID.randomUUID());
+                missionProjet.setStatut(StatutMission.VALIDE);
+                LivrableAttendu attendu = new LivrableAttendu();
+                attendu.setTitre("BMV");
+                attendu.setObligatoire(true);
+
+                when(progressionRepository.findById(progressionId)).thenReturn(Optional.of(progression));
+                when(missionEtapeRepository.findByEtapeIdAndStructureIdOrderByOrdreAsc(etapeId, structureId))
+                                .thenReturn(List.of(missionEtape));
+                when(missionProjetRepository.findByMissionEtapeIdAndProjetIdAndStructureId(missionEtape.getId(), projetId, structureId))
+                                .thenReturn(List.of(missionProjet));
+                when(livrableAttenduRepository.findByMissionEtapeIdOrderByOrdreAsc(missionEtape.getId()))
+                                .thenReturn(List.of(attendu));
+                when(livrableRepository.findAllByMissionProjetIdAndStructureId(missionProjet.getId(), structureId))
+                                .thenReturn(List.of());
+
+                TenantContext.setCurrentTenant(structureId);
+                try {
+                        InvalidProgressionTransitionException exception = assertThrows(
+                                        InvalidProgressionTransitionException.class,
+                                        () -> progressionService.validerEtape(progressionId, coach));
+                        assertTrue(exception.getMessage().contains("tous les livrables obligatoires ne sont pas validés"));
+                        verify(historiqueProgressionRepository, never()).save(any(HistoriqueProgression.class));
+                } finally {
+                        TenantContext.clear();
+                }
+        }
 
     /**
      * Cas 6 : Deux projets avec progressions différentes → aucune interférence

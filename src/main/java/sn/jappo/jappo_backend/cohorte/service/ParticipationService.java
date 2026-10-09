@@ -456,6 +456,7 @@ public class ParticipationService {
                         structureId
                 )
                 .stream()
+                .filter(mp -> mp.getMissionCohorte() != null)
                 .filter(mp ->
                         mp.getMissionCohorte().getCohorte() != null
                                 && mp.getMissionCohorte()

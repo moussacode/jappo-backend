@@ -19,6 +19,8 @@ public interface MissionProjetRepository extends JpaRepository<MissionProjet, UU
 
     boolean existsByMissionEtapeIdAndProjetIdAndStructureId(UUID missionEtapeId, UUID projetId, UUID structureId);
 
+    long countByMissionEtapeIdAndProjetIdAndStructureId(UUID missionEtapeId, UUID projetId, UUID structureId);
+
     long countByProjetIdAndStructureId(UUID projetId, UUID structureId);
 
     long countByProjetIdAndStructureIdAndStatut(UUID projetId, UUID structureId, StatutMission statut);

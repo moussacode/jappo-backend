@@ -13,6 +13,7 @@ import sn.jappo.jappo_backend.cohorte.repository.CohorteRepository;
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import sn.jappo.jappo_backend.mission.dto.CreateMissionRequest;
 import sn.jappo.jappo_backend.mission.dto.MissionResponse;
+import sn.jappo.jappo_backend.mission.dto.LivrableAttenduResponse;
 import sn.jappo.jappo_backend.mission.dto.MissionCohorteResponse;
 import sn.jappo.jappo_backend.mission.dto.UpdateStatutMissionRequest;
 import sn.jappo.jappo_backend.mission.entity.MissionCohorte;
@@ -21,6 +22,7 @@ import sn.jappo.jappo_backend.mission.entity.MissionProjet;
 import sn.jappo.jappo_backend.mission.entity.PrioriteMission;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
 import sn.jappo.jappo_backend.mission.entity.MissionModele;
+import sn.jappo.jappo_backend.mission.repository.LivrableAttenduRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionCohorteRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionEtapeRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionModeleRepository;
@@ -51,6 +53,7 @@ public class MissionService {
     private final UserRepository userRepository;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final LivrableRepository livrableRepository;
+    private final LivrableAttenduRepository livrableAttenduRepository;
     private final EtapeRepository etapeRepository;
 
 
@@ -65,6 +68,7 @@ public class MissionService {
             UserRepository userRepository,
             org.springframework.context.ApplicationEventPublisher eventPublisher,
             LivrableRepository livrableRepository,
+            LivrableAttenduRepository livrableAttenduRepository,
             EtapeRepository etapeRepository
 
     ) {
@@ -78,6 +82,7 @@ public class MissionService {
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
         this.livrableRepository = livrableRepository;
+        this.livrableAttenduRepository = livrableAttenduRepository;
         this.etapeRepository = etapeRepository;
 
     }
@@ -239,7 +244,10 @@ public class MissionService {
                 mc.getDateCreation(),
                 null,
                 1,
-                0
+                0,
+                livrableAttenduRepository.findByMissionCohorteIdOrderByOrdreAsc(mc.getId()).stream()
+                    .map(this::mapLivrableAttenduResponse)
+                    .toList()
         );
     }
 
@@ -479,8 +487,8 @@ public class MissionService {
             if (nomAssigneA.isEmpty()) nomAssigneA = null;
         }
 
-        // Récupération dynamique du nombre de livrables soumis via la collection 1-N
         int livrablesDeposes = mp.getLivrables() != null ? mp.getLivrables().size() : 0;
+        int livrablesAttendus = compterLivrablesAttendus(mp);
 
         return new MissionResponse(
                 mp.getId(),
@@ -504,9 +512,53 @@ public class MissionService {
                 mp.getStructure() != null ? mp.getStructure().getId() : null,
                 mp.getDateCreation(),
                 null,
-                1,
-                livrablesDeposes
+                livrablesAttendus,
+                livrablesDeposes,
+                chargerLivrablesAttendus(mp)
         );
+    }
+
+    private List<LivrableAttenduResponse> chargerLivrablesAttendus(MissionProjet mp) {
+        if (mp.getMissionEtape() != null) {
+            return livrableAttenduRepository.findByMissionEtapeIdOrderByOrdreAsc(mp.getMissionEtape().getId())
+                    .stream().map(this::mapLivrableAttenduResponse).toList();
+        }
+        if (mp.getMissionCohorte() != null) {
+            return livrableAttenduRepository.findByMissionCohorteIdOrderByOrdreAsc(mp.getMissionCohorte().getId())
+                    .stream().map(this::mapLivrableAttenduResponse).toList();
+        }
+        return List.of();
+    }
+
+    private LivrableAttenduResponse mapLivrableAttenduResponse(sn.jappo.jappo_backend.mission.entity.LivrableAttendu expected) {
+        MissionEtape missionEtape = expected.getMissionEtape();
+        Etape etape = missionEtape != null ? missionEtape.getEtape() : null;
+        return new LivrableAttenduResponse(
+                expected.getId(), expected.getTitre(), expected.getDescription(), expected.getOrdre(),
+                expected.isObligatoire(), expected.getType(), expected.getTemplateType(),
+                missionEtape != null ? missionEtape.getId() : null,
+                etape != null ? etape.getId() : null,
+                missionEtape != null && missionEtape.getStructure() != null
+                        ? missionEtape.getStructure().getId()
+                        : (expected.getMissionCohorte() != null && expected.getMissionCohorte().getStructure() != null
+                                ? expected.getMissionCohorte().getStructure().getId() : null),
+                expected.getDateCreation()
+        );
+    }
+
+    private int compterLivrablesAttendus(MissionProjet mp) {
+        if (mp == null) {
+            return 0;
+        }
+        if (mp.getMissionEtape() != null) {
+            return livrableAttenduRepository
+                    .findByMissionEtapeId(mp.getMissionEtape().getId())
+                    .size();
+        }
+        if (mp.getMissionCohorte() != null) {
+            return livrableAttenduRepository.findByMissionCohorteId(mp.getMissionCohorte().getId()).size();
+        }
+        return 0;
     }
 
 
@@ -520,6 +572,13 @@ public MissionResponse updateMissionDetails(UUID missionProjetId, UpdateMissionR
     verifierNonArchiveMissionProjet(mp);
 
     MissionCohorte mc = mp.getMissionCohorte();
+    if (mc == null) {
+        throw new org.springframework.web.server.ResponseStatusException(
+            org.springframework.http.HttpStatus.BAD_REQUEST,
+            "Cette mission est liée à une étape et ne peut pas être modifiée avec le flux de cohorte."
+        );
+    }
+
     verifierNonArchiveMissionCohorte(mc);
 
     // Vérification du verrouillage structural :

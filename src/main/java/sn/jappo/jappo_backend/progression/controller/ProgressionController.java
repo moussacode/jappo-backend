@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 import sn.jappo.jappo_backend.progression.dto.AvancerProgressionRequest;
 import sn.jappo.jappo_backend.progression.dto.CreateProgressionRequest;
+import sn.jappo.jappo_backend.progression.dto.FeuilleRouteProjetDTO;
 import sn.jappo.jappo_backend.progression.dto.HistoriqueProgressionDTO;
 import sn.jappo.jappo_backend.progression.dto.ProgressionDTO;
 import sn.jappo.jappo_backend.progression.service.ProgressionService;
@@ -45,6 +46,11 @@ public class ProgressionController {
                 progressionService.getProgressionsByProjetId(projetId)
         );
     }
+
+        @GetMapping("/projet/{projetId}/feuille-de-route")
+        public ResponseEntity<FeuilleRouteProjetDTO> getFeuilleRouteProjet(@PathVariable UUID projetId) {
+                return ResponseEntity.ok(progressionService.getFeuilleRouteProjet(projetId));
+        }
 
     @GetMapping("/{id}")
     public ResponseEntity<ProgressionDTO> getProgressionById(

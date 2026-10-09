@@ -53,6 +53,7 @@ public record SuiviProjetDTO(
     Integer livrablesEnAttente,
     Integer livrablesRefuses,
     Integer livrablesValides,
+    Integer livrablesAttendusTotal,
     Integer livrablesTotal,
 
     // Réunions

@@ -19,6 +19,7 @@ import sn.jappo.jappo_backend.parcours.repository.EtapeRepository;
 import sn.jappo.jappo_backend.parcours.repository.ParcoursPhaseRepository;
 import sn.jappo.jappo_backend.parcours.repository.ParcoursRepository;
 import sn.jappo.jappo_backend.parcours.repository.PhaseRepository;
+import sn.jappo.jappo_backend.progression.dto.FeuilleRouteProjetDTO;
 import sn.jappo.jappo_backend.progression.dto.AvancerProgressionRequest;
 import sn.jappo.jappo_backend.progression.dto.CreateProgressionRequest;
 import sn.jappo.jappo_backend.progression.dto.HistoriqueProgressionDTO;
@@ -39,6 +40,11 @@ import sn.jappo.jappo_backend.mission.entity.MissionProjet;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
 import sn.jappo.jappo_backend.mission.repository.MissionEtapeRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
+import sn.jappo.jappo_backend.mission.repository.MissionCohorteRepository;
+import sn.jappo.jappo_backend.mission.repository.LivrableAttenduRepository;
+import sn.jappo.jappo_backend.mission.entity.MissionCohorte;
+import sn.jappo.jappo_backend.mission.entity.LivrableAttendu;
+import sn.jappo.jappo_backend.parcours.entity.ParcoursPhase;
 import sn.jappo.jappo_backend.livrable.entity.Livrable;
 import sn.jappo.jappo_backend.livrable.entity.StatutLivrable;
 import sn.jappo.jappo_backend.livrable.repository.LivrableRepository;
@@ -57,6 +63,8 @@ public class ProgressionService {
     private final MissionEtapeRepository missionEtapeRepository;
     private final MissionProjetRepository missionProjetRepository;
     private final LivrableRepository livrableRepository;
+    private final MissionCohorteRepository missionCohorteRepository;
+    private final LivrableAttenduRepository livrableAttenduRepository;
 
     private UUID getRequiredTenantId() {
         UUID tenantId = TenantContext.getCurrentTenant();
@@ -439,6 +447,7 @@ public class ProgressionService {
         historique.setTypeChangement(TypeChangement.MANUEL);
         historique.setEffectuePar(coach);
         historiqueProgressionRepository.save(historique);
+        progression.setPourcentageAvancement(calculerPourcentageParcours(progression, etapeActuelle.getId()));
 
         // Avancer à l'étape suivante automatiquement
         Etape etapeSuivante = getEtapeSuivante(progression.getPhase(), etapeActuelle);
@@ -473,6 +482,13 @@ public class ProgressionService {
         Etape etapeCible = etapeRepository.findByIdAndStructureId(etapeId, structureId)
                 .orElseThrow(() -> new IllegalArgumentException("Étape introuvable"));
 
+        if (etapeCible.isArchive()
+            || etapeCible.getPhase() == null
+            || !parcoursPhaseRepository.existsByParcours_IdAndPhase_Id(
+                progression.getParcours().getId(), etapeCible.getPhase().getId())) {
+            return false;
+        }
+
         // Si c'est l'étape actuelle → accessible (ACTIVE)
         if (progression.getEtape() != null && progression.getEtape().getId().equals(etapeCible.getId())) {
             return true;
@@ -483,13 +499,22 @@ public class ProgressionService {
             return true;
         }
 
-        // Si c'est la première étape de la phase → accessible
-        if (etapeCible.getOrdre() == 1) {
+        // Une étape d'une phase différente reste verrouillée jusqu'à l'avancement manuel de la progression.
+        if (progression.getPhase() == null
+                || !progression.getPhase().getId().equals(etapeCible.getPhase().getId())) {
+            return false;
+        }
+
+        // Si c'est la première étape de la phase courante → accessible
+        if (getEtapesActives(etapeCible.getPhase()).stream().findFirst()
+                .map(Etape::getId)
+                .filter(etapeCible.getId()::equals)
+                .isPresent()) {
             return true;
         }
 
         // Si l'étape précédente est validée → accessible (débloque l'étape suivante)
-        Etape etapePrecedente = getEtapePrecedente(progression.getPhase(), etapeCible);
+        Etape etapePrecedente = getEtapePrecedente(etapeCible.getPhase(), etapeCible);
         if (etapePrecedente != null && isEtapeValidee(progression, etapePrecedente)) {
             return true;
         }
@@ -497,6 +522,258 @@ public class ProgressionService {
         // Sinon → verrouillée
         return false;
     }
+
+        @Transactional(readOnly = true)
+        public FeuilleRouteProjetDTO getFeuilleRouteProjet(UUID projetId) {
+        UUID structureId = getRequiredTenantId();
+        Projet projet = projetRepository.findByIdAndStructureId(projetId, structureId)
+            .orElseThrow(() -> new ProgressionNotFoundException("Projet introuvable dans votre structure"));
+
+        List<Progression> progressions = progressionRepository.findAllByProjetId(projetId);
+        Parcours parcoursCohorte = projet.getCohorte() != null ? projet.getCohorte().getParcours() : null;
+        Progression progression;
+        Parcours parcours;
+        if (parcoursCohorte != null) {
+            parcours = parcoursCohorte;
+            progression = progressions.stream()
+                    .filter(p -> p.getParcours() != null && parcours.getId().equals(p.getParcours().getId()))
+                    .filter(p -> p.getStatut() == StatutProgression.EN_COURS || p.getStatut() == StatutProgression.EN_PAUSE)
+                    .findFirst()
+                    .orElseGet(() -> progressions.stream()
+                            .filter(p -> p.getParcours() != null && parcours.getId().equals(p.getParcours().getId()))
+                            .findFirst()
+                            .orElse(null));
+        } else {
+            progression = progressions.stream()
+                    .filter(p -> p.getStatut() == StatutProgression.EN_COURS || p.getStatut() == StatutProgression.EN_PAUSE)
+                    .findFirst()
+                    .orElseGet(() -> progressions.stream().findFirst().orElse(null));
+            parcours = progression != null ? progression.getParcours() : null;
+        }
+        if (parcours == null) {
+            return new FeuilleRouteProjetDTO(projetId, null, null, null, null,
+            progression != null ? progression.getId() : null,
+            progression != null ? progression.getStatut().name() : null,
+            progression != null ? progression.getPourcentageAvancement() : null,
+                List.of());
+        }
+        if (parcours.getStructure() == null || !structureId.equals(parcours.getStructure().getId())) {
+            throw new ProgressionNotFoundException("Parcours introuvable dans votre structure");
+        }
+
+        List<ParcoursPhase> associations = parcoursPhaseRepository
+            .findByParcours_IdOrderByOrdreAsc(parcours.getId())
+            .stream()
+            .filter(pp -> pp.getPhase() != null
+                && pp.getPhase().getStructure() != null
+                && structureId.equals(pp.getPhase().getStructure().getId()))
+            .toList();
+        List<Etape> allRouteSteps = associations.stream()
+            .flatMap(pp -> etapeRepository.findAllByPhaseIdOrderByOrdreAsc(pp.getPhase().getId()).stream())
+            .filter(step -> step.getStructure() != null && structureId.equals(step.getStructure().getId())
+                && step.getPhase() != null && step.getPhase().getStructure() != null
+                && structureId.equals(step.getPhase().getStructure().getId()))
+            .toList();
+        var validatedStepIds = progression == null ? java.util.Set.<UUID>of()
+            : historiqueProgressionRepository.findByProgressionIdOrderByDateEntreeDesc(progression.getId())
+                .stream()
+                .filter(h -> "VALIDATION_COACH".equals(h.getRaison()) && h.getEtapeEntree() != null)
+                .map(h -> h.getEtapeEntree().getId())
+                .collect(java.util.stream.Collectors.toSet());
+        List<MissionProjet> projectMissions = missionProjetRepository
+            .findAllByProjetIdAndStructureId(projetId, structureId);
+        UUID projectCohorteId = projet.getCohorte() != null ? projet.getCohorte().getId() : null;
+
+        Progression routeProgression = progression;
+        List<FeuilleRouteProjetDTO.PhaseDTO> phaseDtos = new java.util.ArrayList<>();
+        boolean priorPhasesComplete = true;
+        for (int phaseIndex = 0; phaseIndex < associations.size(); phaseIndex++) {
+            int currentPhaseIndex = phaseIndex;
+            boolean earlierPhasesComplete = priorPhasesComplete;
+            ParcoursPhase association = associations.get(phaseIndex);
+            Phase phase = association.getPhase();
+            List<Etape> steps = allRouteSteps.stream()
+                .filter(step -> phase.getId().equals(step.getPhase().getId()))
+                .toList();
+            boolean phaseComplete = steps.stream()
+                .filter(step -> !step.isArchive() && step.isObligatoire())
+                .allMatch(step -> validatedStepIds.contains(step.getId()));
+            int phasePercentage = completionPercentage(steps, validatedStepIds);
+            boolean currentPhase = routeProgression != null && routeProgression.getPhase() != null
+                && phase.getId().equals(routeProgression.getPhase().getId());
+
+            String phaseStatus;
+            String phaseReason = null;
+            if (phase.isArchive()) {
+            phaseStatus = "ARCHIVEE";
+            phaseReason = "Cette phase est archivée.";
+            } else if (routeProgression == null) {
+            phaseStatus = currentPhaseIndex == 0 ? "NON_DEMARREE" : "VERROUILLEE";
+            if (currentPhaseIndex > 0) phaseReason = "La progression du projet n'a pas encore été initialisée.";
+            } else if (currentPhase) {
+            phaseStatus = phaseComplete ? "TERMINEE" : "EN_COURS";
+            } else if (isBeforeCurrentPhase(associations, currentPhaseIndex, routeProgression)) {
+            phaseStatus = phaseComplete ? "TERMINEE" : "INCOMPLETE";
+            if (!phaseComplete) phaseReason = "Des étapes obligatoires de cette phase restent à valider.";
+            } else if (earlierPhasesComplete) {
+            phaseStatus = "A_ACTIVER";
+            phaseReason = "Les prérequis sont satisfaits; la progression de phase reste une action manuelle.";
+            } else {
+            phaseStatus = "VERROUILLEE";
+            phaseReason = "Les phases précédentes ne sont pas terminées.";
+            }
+
+            List<FeuilleRouteProjetDTO.EtapeDTO> stepDtos = steps.stream()
+                .map(step -> mapRoadmapStep(step, currentPhaseIndex, routeProgression, validatedStepIds,
+                    earlierPhasesComplete, phaseComplete, projectMissions, structureId, projectCohorteId))
+                .toList();
+            phaseDtos.add(new FeuilleRouteProjetDTO.PhaseDTO(
+                phase.getId(), phase.getNom(), association.getOrdre(), phaseStatus,
+                phaseReason, phasePercentage, stepDtos));
+
+            if (!phaseComplete) priorPhasesComplete = false;
+        }
+
+        int globalPercentage = completionPercentage(allRouteSteps, validatedStepIds);
+        UUID programmeId = parcours.getProgramme() != null ? parcours.getProgramme().getId() : null;
+        String nomProgramme = parcours.getProgramme() != null ? parcours.getProgramme().getNom() : null;
+        return new FeuilleRouteProjetDTO(
+            projetId, programmeId, nomProgramme, parcours.getId(), parcours.getNom(),
+            routeProgression != null ? routeProgression.getId() : null,
+            routeProgression != null ? routeProgression.getStatut().name() : null,
+            routeProgression != null ? globalPercentage : null,
+            phaseDtos);
+        }
+
+        private FeuilleRouteProjetDTO.EtapeDTO mapRoadmapStep(
+            Etape step,
+            int phaseIndex,
+            Progression progression,
+            java.util.Set<UUID> validatedStepIds,
+            boolean priorPhasesComplete,
+            boolean phaseComplete,
+            List<MissionProjet> projectMissions,
+            UUID structureId,
+            UUID projectCohorteId
+        ) {
+        String status;
+        String reason = null;
+        boolean validated = validatedStepIds.contains(step.getId());
+        boolean currentPhase = progression != null && progression.getPhase() != null
+            && progression.getPhase().getId().equals(step.getPhase().getId());
+
+        if (step.isArchive()) {
+            status = "ARCHIVEE";
+            reason = "Cette étape est archivée.";
+        } else if (validated) {
+            status = "VALIDEE";
+        } else if (progression == null) {
+            status = phaseIndex == 0 && isFirstStep(step) ? "ACCESSIBLE" : "VERROUILLEE";
+            if ("VERROUILLEE".equals(status)) reason = "La progression du projet n'a pas encore été initialisée.";
+        } else if (currentPhase && progression.getEtape() != null
+            && progression.getEtape().getId().equals(step.getId())) {
+            status = "ACTIVE";
+        } else if (currentPhase && isAccessibleInCurrentPhase(step, progression, validatedStepIds)) {
+            status = "ACCESSIBLE";
+            reason = "Cette étape est accessible après validation du prérequis.";
+        } else if (!currentPhase && priorPhasesComplete && isFirstStep(step)) {
+            status = "A_ACTIVER";
+            reason = "Les prérequis sont satisfaits; la progression de phase reste une action manuelle.";
+        } else {
+            status = "VERROUILLEE";
+            reason = currentPhase
+                ? "Validez l'étape précédente pour débloquer cette étape."
+                : "Les prérequis de cette phase ne sont pas satisfaits.";
+        }
+
+        List<FeuilleRouteProjetDTO.MissionDTO> missionDtos = new java.util.ArrayList<>();
+        List<MissionEtape> stepMissions = missionEtapeRepository
+            .findByEtapeIdAndStructureIdOrderByOrdreAsc(step.getId(), structureId);
+        for (MissionEtape mission : stepMissions) {
+            MissionProjet instance = projectMissions.stream()
+                .filter(mp -> mp.getMissionEtape() != null && mission.getId().equals(mp.getMissionEtape().getId()))
+                .findFirst().orElse(null);
+            missionDtos.add(mapRoadmapMission(mission.getId(), "ETAPE", mission.getTitre(), mission.getDescription(),
+                mission.isObligatoire(), instance, livrableAttenduRepository.findByMissionEtapeIdOrderByOrdreAsc(mission.getId())));
+        }
+        List<MissionCohorte> cohortMissions = missionCohorteRepository.findByEtapeIdAndStructureId(step.getId(), structureId);
+        for (MissionCohorte mission : cohortMissions) {
+            if (mission.getCohorte() != null
+                    && !mission.getCohorte().getId().equals(projectCohorteId)) {
+                continue;
+            }
+            MissionProjet instance = projectMissions.stream()
+                .filter(mp -> mp.getMissionCohorte() != null && mission.getId().equals(mp.getMissionCohorte().getId()))
+                .findFirst().orElse(null);
+            missionDtos.add(mapRoadmapMission(mission.getId(), "COHORTE", mission.getTitre(), mission.getDescription(),
+                true, instance, livrableAttenduRepository.findByMissionCohorteIdOrderByOrdreAsc(mission.getId())));
+        }
+
+        return new FeuilleRouteProjetDTO.EtapeDTO(
+            step.getId(), step.getNom(), step.getDescription(), step.getOrdre(), step.isObligatoire(),
+            status, reason, validated ? 100 : 0, missionDtos);
+        }
+
+        private FeuilleRouteProjetDTO.MissionDTO mapRoadmapMission(
+            UUID missionId,
+            String origine,
+            String titre,
+            String description,
+            boolean obligatoire,
+            MissionProjet instance,
+            List<LivrableAttendu> expected
+        ) {
+        List<FeuilleRouteProjetDTO.LivrableAttenduDTO> expectedDtos = expected.stream()
+            .map(item -> new FeuilleRouteProjetDTO.LivrableAttenduDTO(
+                item.getId(), item.getTitre(), item.getDescription(), item.isObligatoire(),
+                item.getType().name(), item.getOrdre()))
+            .toList();
+        List<FeuilleRouteProjetDTO.LivrableDeposeDTO> submitted = instance == null ? List.of()
+            : livrableRepository.findAllByMissionProjetIdAndStructureId(instance.getId(), instance.getStructure().getId())
+                .stream()
+                .map(item -> new FeuilleRouteProjetDTO.LivrableDeposeDTO(
+                    item.getId(), item.getNom(), item.getStatut().name(),
+                    item.getNumeroVersion(), item.getDateDepot()))
+                .toList();
+        return new FeuilleRouteProjetDTO.MissionDTO(
+            missionId, origine, titre, description, obligatoire,
+            instance != null ? (instance.isArchive() ? "ARCHIVEE" : instance.getStatut().name()) : "NON_ASSIGNEE",
+            expectedDtos, submitted);
+        }
+
+        private boolean isBeforeCurrentPhase(List<ParcoursPhase> phases, int phaseIndex, Progression progression) {
+        if (progression == null || progression.getPhase() == null) return false;
+        for (int index = 0; index < phases.size(); index++) {
+            if (phases.get(index).getPhase().getId().equals(progression.getPhase().getId())) {
+                return phaseIndex < index;
+            }
+        }
+        return false;
+        }
+
+        private boolean isFirstStep(Etape step) {
+        return getEtapesActives(step.getPhase()).stream().findFirst()
+            .map(Etape::getId).filter(step.getId()::equals).isPresent();
+        }
+
+        private boolean isAccessibleInCurrentPhase(Etape step, Progression progression, java.util.Set<UUID> validatedStepIds) {
+        List<Etape> activeSteps = getEtapesActives(step.getPhase());
+        int index = activeSteps.indexOf(step);
+        return index == 0 || (index > 0 && validatedStepIds.contains(activeSteps.get(index - 1).getId()));
+        }
+
+        private List<Etape> getEtapesActives(Phase phase) {
+        return phase == null ? List.of() : etapeRepository.findAllByPhaseIdOrderByOrdreAsc(phase.getId()).stream()
+            .filter(step -> !step.isArchive())
+            .toList();
+        }
+
+        private int completionPercentage(List<Etape> steps, java.util.Set<UUID> validatedStepIds) {
+        List<Etape> required = steps.stream().filter(step -> !step.isArchive() && step.isObligatoire()).toList();
+        if (required.isEmpty()) return 100;
+        long completed = required.stream().filter(step -> validatedStepIds.contains(step.getId())).count();
+        return (int) Math.round((completed * 100.0) / required.size());
+        }
 
     /**
      * Vérifie si toutes les missions obligatoires d'une étape sont terminées.
@@ -531,6 +808,14 @@ public class ProgressionService {
             }
         }
 
+        for (MissionCohorte missionCohorte : missionsCohorteApplicables(progression, etape, structureId)) {
+            List<MissionProjet> instances = missionProjetRepository.findByMissionCohorteIdAndProjetIdAndStructureId(
+                    missionCohorte.getId(), progression.getProjet().getId(), structureId);
+            if (instances.isEmpty() || instances.stream().anyMatch(mp -> mp.getStatut() != StatutMission.VALIDE)) {
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -555,10 +840,37 @@ public class ProgressionService {
             List<MissionProjet> missionsProjet = missionProjetRepository
                     .findByMissionEtapeIdAndProjetIdAndStructureId(missionEtape.getId(), progression.getProjet().getId(), structureId);
 
+            long attendusObligatoires = livrableAttenduRepository.findByMissionEtapeIdOrderByOrdreAsc(missionEtape.getId())
+                    .stream()
+                    .filter(LivrableAttendu::isObligatoire)
+                    .count();
+
             for (MissionProjet mp : missionsProjet) {
                 List<Livrable> livrables = livrableRepository.findAllByMissionProjetIdAndStructureId(mp.getId(), structureId);
+                if (livrables.size() < attendusObligatoires) {
+                    return false;
+                }
                 boolean tousValides = livrables.stream().allMatch(l -> l.getStatut() == StatutLivrable.VALIDE);
                 if (!tousValides) {
+                    return false;
+                }
+            }
+        }
+
+        for (MissionCohorte missionCohorte : missionsCohorteApplicables(progression, etape, structureId)) {
+            List<MissionProjet> instances = missionProjetRepository.findByMissionCohorteIdAndProjetIdAndStructureId(
+                    missionCohorte.getId(), progression.getProjet().getId(), structureId);
+            if (instances.isEmpty()) {
+                return false;
+            }
+            long attendusObligatoires = livrableAttenduRepository.findByMissionCohorteIdOrderByOrdreAsc(missionCohorte.getId())
+                    .stream()
+                    .filter(LivrableAttendu::isObligatoire)
+                    .count();
+            for (MissionProjet instance : instances) {
+                List<Livrable> livrables = livrableRepository.findAllByMissionProjetIdAndStructureId(instance.getId(), structureId);
+                if (livrables.size() < attendusObligatoires
+                        || livrables.stream().anyMatch(livrable -> livrable.getStatut() != StatutLivrable.VALIDE)) {
                     return false;
                 }
             }
@@ -567,9 +879,43 @@ public class ProgressionService {
         return true;
     }
 
+    private List<MissionCohorte> missionsCohorteApplicables(Progression progression, Etape etape, UUID structureId) {
+        UUID projetCohorteId = progression.getProjet().getCohorte() != null
+                ? progression.getProjet().getCohorte().getId()
+                : null;
+        return missionCohorteRepository.findByEtapeIdAndStructureId(etape.getId(), structureId).stream()
+                .filter(mission -> mission.getCohorte() == null
+                        || mission.getCohorte().getId().equals(projetCohorteId))
+                .toList();
+    }
+
     /**
      * Vérifie si une étape a été validée en consultant l'historique.
      */
+        private int calculerPourcentageParcours(Progression progression, UUID etapeJustValideeId) {
+        UUID structureId = progression.getProjet().getStructure().getId();
+        java.util.Set<UUID> etapesValidees = historiqueProgressionRepository
+            .findByProgressionIdOrderByDateEntreeDesc(progression.getId())
+            .stream()
+            .filter(h -> "VALIDATION_COACH".equals(h.getRaison()) && h.getEtapeEntree() != null)
+            .map(h -> h.getEtapeEntree().getId())
+            .collect(java.util.stream.Collectors.toSet());
+        etapesValidees.add(etapeJustValideeId);
+
+        List<Etape> etapesObligatoires = parcoursPhaseRepository
+            .findByParcours_IdOrderByOrdreAsc(progression.getParcours().getId())
+            .stream()
+            .filter(pp -> pp.getPhase() != null && pp.getPhase().getStructure() != null
+                && structureId.equals(pp.getPhase().getStructure().getId()))
+            .flatMap(pp -> etapeRepository.findAllByPhaseIdOrderByOrdreAsc(pp.getPhase().getId()).stream())
+            .filter(step -> !step.isArchive() && step.isObligatoire()
+                && step.getStructure() != null && structureId.equals(step.getStructure().getId()))
+            .toList();
+        if (etapesObligatoires.isEmpty()) return 100;
+        long terminees = etapesObligatoires.stream().filter(step -> etapesValidees.contains(step.getId())).count();
+        return (int) Math.round(terminees * 100.0 / etapesObligatoires.size());
+        }
+
     private boolean isEtapeValidee(Progression progression, Etape etape) {
         return progression.getHistorique().stream()
                 .anyMatch(h ->
@@ -583,13 +929,12 @@ public class ProgressionService {
      * Récupère l'étape suivante dans la phase.
      */
     private Etape getEtapeSuivante(Phase phase, Etape etapeActuelle) {
-        if (phase == null || phase.getEtapes() == null) {
+        if (phase == null) {
             return null;
         }
 
-        List<Etape> etapes = phase.getEtapes().stream()
+        List<Etape> etapes = etapeRepository.findAllByPhaseIdOrderByOrdreAsc(phase.getId()).stream()
                 .filter(e -> !e.isArchive())
-                .sorted((e1, e2) -> e1.getOrdre().compareTo(e2.getOrdre()))
                 .toList();
 
         int index = -1;
@@ -611,13 +956,12 @@ public class ProgressionService {
      * Récupère l'étape précédente dans la phase.
      */
     private Etape getEtapePrecedente(Phase phase, Etape etapeCible) {
-        if (phase == null || phase.getEtapes() == null) {
+        if (phase == null) {
             return null;
         }
 
-        List<Etape> etapes = phase.getEtapes().stream()
+        List<Etape> etapes = etapeRepository.findAllByPhaseIdOrderByOrdreAsc(phase.getId()).stream()
                 .filter(e -> !e.isArchive())
-                .sorted((e1, e2) -> e1.getOrdre().compareTo(e2.getOrdre()))
                 .toList();
 
         int index = -1;

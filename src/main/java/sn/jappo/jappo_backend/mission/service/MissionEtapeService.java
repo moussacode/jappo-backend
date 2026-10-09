@@ -3,8 +3,10 @@ package sn.jappo.jappo_backend.mission.service;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import sn.jappo.jappo_backend.cohorte.entity.Cohorte;
@@ -21,6 +23,7 @@ import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
 import sn.jappo.jappo_backend.parcours.entity.Etape;
 import sn.jappo.jappo_backend.parcours.entity.Phase;
 import sn.jappo.jappo_backend.parcours.repository.EtapeRepository;
+import sn.jappo.jappo_backend.parcours.repository.ParcoursPhaseRepository;
 import sn.jappo.jappo_backend.projet.entity.Projet;
 import sn.jappo.jappo_backend.projet.repository.ProjetRepository;
 import sn.jappo.jappo_backend.structure.entity.Structure;
@@ -34,6 +37,7 @@ public class MissionEtapeService {
     private final MissionProjetRepository missionProjetRepository;
     private final ProjetRepository projetRepository;
     private final EtapeRepository etapeRepository;
+    private final ParcoursPhaseRepository parcoursPhaseRepository;
     private final StructureRepository structureRepository;
 
     public MissionEtapeService(
@@ -42,6 +46,7 @@ public class MissionEtapeService {
             MissionProjetRepository missionProjetRepository,
             ProjetRepository projetRepository,
             EtapeRepository etapeRepository,
+            ParcoursPhaseRepository parcoursPhaseRepository,
             StructureRepository structureRepository
     ) {
         this.missionEtapeRepository = missionEtapeRepository;
@@ -49,6 +54,7 @@ public class MissionEtapeService {
         this.missionProjetRepository = missionProjetRepository;
         this.projetRepository = projetRepository;
         this.etapeRepository = etapeRepository;
+        this.parcoursPhaseRepository = parcoursPhaseRepository;
         this.structureRepository = structureRepository;
     }
 
@@ -170,14 +176,8 @@ public class MissionEtapeService {
             return;
         }
 
-        UUID phaseId = missionEtape.getEtape().getPhase().getId();
-
         List<Projet> projetsConcernes = projetRepository.findAllByStructureId(structureId).stream()
-                .filter(projet -> projet.getCohorte() != null)
-                .filter(projet -> projet.getCohorte().getPhase() != null)
-                .filter(projet -> phaseId.equals(projet.getCohorte().getPhase().getId()))
-                .filter(projet -> projet.getCohorte().getStructure() != null)
-                .filter(projet -> projet.getCohorte().getStructure().getId().equals(structureId))
+                .filter(projet -> estProjetEligiblePourMissionEtape(projet, missionEtape, structureId))
                 .toList();
 
         for (Projet projet : projetsConcernes) {
@@ -201,24 +201,23 @@ public class MissionEtapeService {
     }
 
     @Transactional
-    public void synchroniserMissionEtapePourProjet(Projet projet, Cohorte cohorte) {
+    public int synchroniserMissionEtapePourProjet(Projet projet, Cohorte cohorte) {
         if (projet == null || cohorte == null || projet.getStructure() == null || cohorte.getPhase() == null) {
-            return;
+            return 0;
         }
 
         UUID structureId = projet.getStructure().getId();
         if (cohorte.getStructure() == null || !cohorte.getStructure().getId().equals(structureId)) {
-            return;
+            return 0;
         }
-
-        UUID phaseId = cohorte.getPhase().getId();
 
         List<MissionEtape> missionsEtupe = missionEtapeRepository.findByStructureId(structureId).stream()
                 .filter(mission -> mission.getEtape() != null)
                 .filter(mission -> mission.getEtape().getPhase() != null)
-                .filter(mission -> phaseId.equals(mission.getEtape().getPhase().getId()))
+                .filter(mission -> estPhaseCompatibleAvecParcoursEtStructure(mission.getEtape().getPhase().getId(), cohorte, structureId))
                 .toList();
 
+        int missionsCreees = 0;
         for (MissionEtape missionEtape : missionsEtupe) {
             if (missionProjetRepository.existsByMissionEtapeIdAndProjetIdAndStructureId(
                     missionEtape.getId(),
@@ -235,7 +234,37 @@ public class MissionEtapeService {
             missionProjet.setStatut(StatutMission.A_FAIRE);
             missionProjet.setStructure(projet.getStructure());
             missionProjetRepository.save(missionProjet);
+            missionsCreees++;
         }
+
+        return missionsCreees;
+    }
+
+    @Transactional
+    public int resynchroniserMissionsPourProjet(UUID projetId) {
+        UUID structureId = getRequiredTenantId();
+
+        Projet projet = projetRepository.findByIdAndStructureId(projetId, structureId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Projet introuvable pour cette structure"
+                ));
+
+        Cohorte cohorte = projet.getCohorte();
+        if (cohorte == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Le projet n'est rattaché à aucune cohorte"
+            );
+        }
+        if (cohorte.getStructure() == null || !structureId.equals(cohorte.getStructure().getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "La cohorte du projet n'appartient pas à cette structure"
+            );
+        }
+
+        return synchroniserMissionEtapePourProjet(projet, cohorte);
     }
 
     private Etape loadEtapeForStructure(UUID etapeId, UUID structureId) {
@@ -260,6 +289,38 @@ public class MissionEtapeService {
     private MissionEtape loadMissionForEtape(UUID missionId, UUID etapeId, UUID structureId) {
         return missionEtapeRepository.findByIdAndEtapeIdAndStructureId(missionId, etapeId, structureId)
                 .orElseThrow(() -> new IllegalArgumentException("Mission étape introuvable pour cette étape"));
+    }
+
+    private boolean estProjetEligiblePourMissionEtape(Projet projet, MissionEtape missionEtape, UUID structureId) {
+        if (projet == null || projet.getStructure() == null || !structureId.equals(projet.getStructure().getId())) {
+            return false;
+        }
+        if (projet.getCohorte() == null || projet.getCohorte().getParcours() == null || projet.getCohorte().getPhase() == null) {
+            return false;
+        }
+        if (missionEtape == null || missionEtape.getEtape() == null || missionEtape.getEtape().getPhase() == null) {
+            return false;
+        }
+        if (missionEtape.getEtape().getPhase().getStructure() == null || !structureId.equals(missionEtape.getEtape().getPhase().getStructure().getId())) {
+            return false;
+        }
+        if (!missionEtape.getEtape().getPhase().getId().equals(projet.getCohorte().getPhase().getId())) {
+            return false;
+        }
+        return estPhaseCompatibleAvecParcoursEtStructure(missionEtape.getEtape().getPhase().getId(), projet.getCohorte(), structureId);
+    }
+
+    private boolean estPhaseCompatibleAvecParcoursEtStructure(UUID phaseId, Cohorte cohorte, UUID structureId) {
+        if (cohorte == null || cohorte.getStructure() == null || !structureId.equals(cohorte.getStructure().getId())) {
+            return false;
+        }
+        if (cohorte.getParcours() == null || cohorte.getPhase() == null) {
+            return false;
+        }
+        if (!phaseId.equals(cohorte.getPhase().getId())) {
+            return false;
+        }
+        return parcoursPhaseRepository.existsByParcours_IdAndPhase_Id(cohorte.getParcours().getId(), phaseId);
     }
 
     private void assertEtapeStructureCoherent(Etape etape, UUID structureId) {

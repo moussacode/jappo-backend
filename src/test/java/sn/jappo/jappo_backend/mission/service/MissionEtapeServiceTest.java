@@ -21,6 +21,7 @@ import sn.jappo.jappo_backend.mission.repository.MissionModeleRepository;
 import sn.jappo.jappo_backend.parcours.entity.Etape;
 import sn.jappo.jappo_backend.parcours.entity.Phase;
 import sn.jappo.jappo_backend.parcours.repository.EtapeRepository;
+import sn.jappo.jappo_backend.projet.repository.ProjetRepository;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
 
@@ -48,6 +49,9 @@ class MissionEtapeServiceTest {
 
     @Mock
     private StructureRepository structureRepository;
+
+    @Mock
+    private ProjetRepository projetRepository;
 
     @InjectMocks
     private MissionEtapeService missionEtapeService;
@@ -98,6 +102,8 @@ class MissionEtapeServiceTest {
             me.setId(missionId);
             return me;
         });
+        when(missionEtapeRepository.findByIdAndStructureId(missionId, structureId)).thenReturn(Optional.of(new MissionEtape()));
+        when(projetRepository.findAllByStructureId(structureId)).thenReturn(List.of());
 
         CreateMissionEtapeRequest request = new CreateMissionEtapeRequest(
                 "Faire 10 interviews",
@@ -136,6 +142,8 @@ class MissionEtapeServiceTest {
             me.setId(missionId);
             return me;
         });
+        when(missionEtapeRepository.findByIdAndStructureId(missionId, structureId)).thenReturn(Optional.of(new MissionEtape()));
+        when(projetRepository.findAllByStructureId(structureId)).thenReturn(List.of());
 
         CreateMissionEtapeRequest request = new CreateMissionEtapeRequest(
                 "Titre explicite",

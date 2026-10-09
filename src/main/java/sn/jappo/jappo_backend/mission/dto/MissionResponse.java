@@ -3,6 +3,7 @@ package sn.jappo.jappo_backend.mission.dto;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.List;
 
 import sn.jappo.jappo_backend.mission.entity.PrioriteMission;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
@@ -38,5 +39,6 @@ public record MissionResponse(
 
         // Compteurs d'avancement
         int nombreLivrablesAttendus, // Nombre de livrables associés
-        int nombreLivrablesDeposes   // Avancement direct pour les badges
+        int nombreLivrablesDeposes,  // Avancement direct pour les badges
+        List<LivrableAttenduResponse> livrablesAttendus
 ) {}

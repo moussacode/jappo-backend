@@ -1,13 +1,14 @@
 package sn.jappo.jappo_backend.mission.controller;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,15 +22,18 @@ import sn.jappo.jappo_backend.mission.dto.MissionResponse;
 import sn.jappo.jappo_backend.mission.dto.MissionCohorteResponse;
 import sn.jappo.jappo_backend.mission.dto.UpdateStatutMissionRequest;
 import sn.jappo.jappo_backend.mission.service.MissionService;
+import sn.jappo.jappo_backend.mission.service.MissionEtapeService;
 
 @RestController
 @RequestMapping("/api/missions")
 public class MissionController {
 
     private final MissionService missionService;
+    private final MissionEtapeService missionEtapeService;
 
-    public MissionController(MissionService missionService) {
+    public MissionController(MissionService missionService, MissionEtapeService missionEtapeService) {
         this.missionService = missionService;
+        this.missionEtapeService = missionEtapeService;
     }
 
     /**
@@ -72,6 +76,13 @@ public class MissionController {
     @GetMapping("/projet/{projetId}")
     public ResponseEntity<List<MissionResponse>> getMissionsByProjet(@PathVariable UUID projetId) {
         return ResponseEntity.ok(missionService.getMissionsByProjet(projetId));
+    }
+
+    @PostMapping("/projet/{projetId}/resynchroniser")
+    @PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
+    public ResponseEntity<Map<String, Integer>> resynchroniserMissionsPourProjet(@PathVariable UUID projetId) {
+        int missionsCreees = missionEtapeService.resynchroniserMissionsPourProjet(projetId);
+        return ResponseEntity.ok(Map.of("missionsCreees", missionsCreees));
     }
 
     /**

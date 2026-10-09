@@ -20,6 +20,7 @@ import sn.jappo.jappo_backend.meeting.repository.MeetingRepository;
 import sn.jappo.jappo_backend.mission.entity.MissionProjet;
 import sn.jappo.jappo_backend.mission.entity.PrioriteMission;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
+import sn.jappo.jappo_backend.mission.repository.LivrableAttenduRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
 import sn.jappo.jappo_backend.parcours.entity.Etape;
 import sn.jappo.jappo_backend.parcours.entity.Parcours;
@@ -44,6 +45,7 @@ public class SuiviProjetService {
     private final ProgressionRepository progressionRepository;
     private final HistoriqueProgressionRepository historiqueProgressionRepository;
     private final MissionProjetRepository missionProjetRepository;
+        private final LivrableAttenduRepository livrableAttenduRepository;
     private final LivrableRepository livrableRepository;
     private final MeetingRepository meetingRepository;
     private final ProgrammeRepository programmeRepository;
@@ -105,11 +107,12 @@ public class SuiviProjetService {
         }
 
         // Récupérer les missions
-        List<MissionProjet> missions = missionProjetRepository.findAllByProjetId(projetId);
+        List<MissionProjet> missions = missionProjetRepository.findAllByProjetIdAndStructureId(projetId, structureId);
         List<MissionProjet> missionsEnCours = missions.stream()
                 .filter(m -> m.getStatut() == StatutMission.EN_COURS)
                 .collect(Collectors.toList());
         List<MissionProjet> missionsEnRetard = missionsEnCours.stream()
+                .filter(m -> m.getMissionCohorte() != null)
                 .filter(m -> m.getMissionCohorte().getDateEcheance() != null
                         && m.getMissionCohorte().getDateEcheance().isBefore(java.time.LocalDate.now()))
                 .collect(Collectors.toList());
@@ -119,6 +122,7 @@ public class SuiviProjetService {
 
         // Prochaines échéances (5 prochaines)
         List<SuiviProjetDTO.EcheanceDTO> prochainesEcheances = missionsEnCours.stream()
+                .filter(m -> m.getMissionCohorte() != null)
                 .filter(m -> m.getMissionCohorte().getDateEcheance() != null)
                 .filter(m -> m.getMissionCohorte().getDateEcheance().isAfter(java.time.LocalDate.now()))
                 .sorted((m1, m2) -> m1.getMissionCohorte().getDateEcheance()
@@ -134,7 +138,7 @@ public class SuiviProjetService {
 
         // Récupérer les livrables
         List<sn.jappo.jappo_backend.livrable.entity.Livrable> livrables = livrableRepository
-                .findAllByProjetId(projetId);
+                .findAllByProjetIdAndStructureId(projetId, structureId);
         long livrablesEnAttente = livrables.stream()
                 .filter(l -> l.getStatut() == StatutLivrable.EN_ATTENTE)
                 .count();
@@ -144,6 +148,17 @@ public class SuiviProjetService {
         long livrablesValides = livrables.stream()
                 .filter(l -> l.getStatut() == StatutLivrable.VALIDE)
                 .count();
+                long livrablesAttendusTotal = missions.stream()
+                                .mapToLong(mission -> {
+                                        if (mission.getMissionEtape() != null) {
+                                                return livrableAttenduRepository.countByMissionEtapeId(mission.getMissionEtape().getId());
+                                        }
+                                        if (mission.getMissionCohorte() != null) {
+                                                return livrableAttenduRepository.countByMissionCohorteId(mission.getMissionCohorte().getId());
+                                        }
+                                        return 0;
+                                })
+                                .sum();
 
         // Récupérer la cohorte active
         Cohorte cohorte = projet.getCohorte();
@@ -231,6 +246,7 @@ public class SuiviProjetService {
                 (int) livrablesEnAttente,
                 (int) livrablesRefuses,
                 (int) livrablesValides,
+                (int) livrablesAttendusTotal,
                 livrables.size(),
                 derniereReunion,
                 prochaineReunion,
