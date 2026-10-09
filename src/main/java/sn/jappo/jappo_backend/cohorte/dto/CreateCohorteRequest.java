@@ -11,6 +11,7 @@ public record CreateCohorteRequest(
         LocalDate dateFin,
         UUID parcoursId,
         UUID phaseId,
+        UUID programmeId,
         List<UUID> coachIds
 ) {
     public CreateCohorteRequest(
@@ -21,6 +22,18 @@ public record CreateCohorteRequest(
             UUID parcoursId,
             UUID phaseId
     ) {
-        this(nom, description, dateDebut, dateFin, parcoursId, phaseId, null);
+        this(nom, description, dateDebut, dateFin, parcoursId, phaseId, null, null);
+    }
+
+    public CreateCohorteRequest(
+            String nom,
+            String description,
+            LocalDate dateDebut,
+            LocalDate dateFin,
+            UUID parcoursId,
+            UUID phaseId,
+            List<UUID> coachIds
+    ) {
+        this(nom, description, dateDebut, dateFin, parcoursId, phaseId, null, coachIds);
     }
 }

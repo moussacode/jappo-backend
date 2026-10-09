@@ -18,6 +18,8 @@ import sn.jappo.jappo_backend.parcours.entity.Parcours;
 import sn.jappo.jappo_backend.parcours.entity.ParcoursPhase;
 import sn.jappo.jappo_backend.parcours.entity.Phase;
 import sn.jappo.jappo_backend.parcours.repository.ParcoursRepository;
+import sn.jappo.jappo_backend.programme.entity.Programme;
+import sn.jappo.jappo_backend.programme.repository.ProgrammeRepository;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
 
@@ -27,6 +29,7 @@ public class ParcoursService {
 
     private final ParcoursRepository parcoursRepository;
     private final StructureRepository structureRepository;
+    private final ProgrammeRepository programmeRepository;
 
     // -----------------------------------------------------------------------
     // LECTURE
@@ -73,6 +76,7 @@ public class ParcoursService {
      * Créer un parcours.
      *
      * Les phases sont sélectionnées séparément.
+     * Si programmeId est fourni, le parcours est associé au programme.
      */
     @Transactional
     public ParcoursResponse createParcours(
@@ -97,6 +101,26 @@ public class ParcoursService {
         parcours.setStructure(structure);
         parcours.setArchive(false);
 
+        // Association au programme si programmeId est fourni
+        if (request.getProgrammeId() != null) {
+            Programme programme = programmeRepository
+                    .findById(request.getProgrammeId())
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.NOT_FOUND,
+                            "Programme introuvable"
+                    ));
+
+            // Vérifier que le programme appartient à la même structure
+            if (!programme.getStructure().getId().equals(structureId)) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Le programme n'appartient pas à votre structure"
+                );
+            }
+
+            parcours.setProgramme(programme);
+        }
+
         Parcours saved = parcoursRepository.save(parcours);
 
         return mapToResponse(saved);
@@ -110,6 +134,7 @@ public class ParcoursService {
      * Modifier un parcours.
      *
      * Les phases ne sont pas modifiées ici.
+     * Le programme peut être modifié si programmeId est fourni.
      */
     @Transactional
     public ParcoursResponse updateParcours(
@@ -138,6 +163,26 @@ public class ParcoursService {
             parcours.setDescription(
                     request.getDescription()
             );
+        }
+
+        // Modification du programme si programmeId est fourni
+        if (request.getProgrammeId() != null) {
+            Programme programme = programmeRepository
+                    .findById(request.getProgrammeId())
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.NOT_FOUND,
+                            "Programme introuvable"
+                    ));
+
+            // Vérifier que le programme appartient à la même structure
+            if (!programme.getStructure().getId().equals(structureId)) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Le programme n'appartient pas à votre structure"
+                );
+            }
+
+            parcours.setProgramme(programme);
         }
 
         /*
@@ -198,6 +243,12 @@ public class ParcoursService {
         response.setArchive(parcours.isArchive());
         response.setDateCreation(parcours.getDateCreation());
         response.setDateModification(parcours.getDateModification());
+
+        // Programme associé
+        if (parcours.getProgramme() != null) {
+            response.setProgrammeId(parcours.getProgramme().getId());
+            response.setProgrammeNom(parcours.getProgramme().getNom());
+        }
 
         if (parcours.getPhases() != null) {
 

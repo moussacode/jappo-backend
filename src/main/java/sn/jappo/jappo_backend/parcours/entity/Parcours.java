@@ -22,6 +22,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import sn.jappo.jappo_backend.structure.entity.Structure;
+import sn.jappo.jappo_backend.programme.entity.Programme;
 
 @Getter
 @Setter
@@ -50,6 +51,15 @@ public class Parcours {
     @JoinColumn(name = "structure_id", nullable = false)
     @JsonIgnore
     private Structure structure;
+
+    /**
+     * Programme auquel ce parcours appartient (optionnel).
+     * Nullable pour permettre la coexistence avec les parcours existants.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "programme_id")
+    @JsonIgnore
+    private Programme programme;
 
     @CreationTimestamp
     private LocalDateTime dateCreation;

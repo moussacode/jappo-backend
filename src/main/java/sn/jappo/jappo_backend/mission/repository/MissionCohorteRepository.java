@@ -14,4 +14,7 @@ public interface MissionCohorteRepository extends JpaRepository<MissionCohorte, 
 
     // Filtrage par archivage
     List<MissionCohorte> findAllByStructureIdAndArchive(UUID structureId, boolean archive);
+
+    // Filtrage par étape
+    List<MissionCohorte> findByEtapeIdAndStructureId(UUID etapeId, UUID structureId);
 }

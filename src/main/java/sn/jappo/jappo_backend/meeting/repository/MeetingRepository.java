@@ -26,4 +26,9 @@ public interface MeetingRepository extends JpaRepository<Meeting, UUID> {
 
     @Query("SELECT m FROM Meeting m WHERE m.structure.id = :structureId AND m.coach.id = :coachId ORDER BY m.scheduledAt DESC")
     List<Meeting> findByStructureIdAndCoachId(UUID structureId, UUID coachId);
+
+    // Note: Meeting n'a pas de lien direct avec Projet, cette méthode utilise la cohorte
+    // Pour simplifier, nous allons utiliser une méthode directe basée sur la cohorte du projet
+    @Query("SELECT m FROM Meeting m WHERE m.cohort.id = :cohorteId ORDER BY m.scheduledAt DESC")
+    List<Meeting> findAllByCohorteId(UUID cohorteId);
 }

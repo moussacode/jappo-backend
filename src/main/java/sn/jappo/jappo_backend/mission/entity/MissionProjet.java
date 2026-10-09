@@ -26,6 +26,7 @@ import sn.jappo.jappo_backend.livrable.entity.Livrable;
 import sn.jappo.jappo_backend.projet.entity.Projet;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.user.entity.User;
+import sn.jappo.jappo_backend.mission.entity.PrioriteMission;
 
 @Getter
 @Setter
@@ -41,9 +42,17 @@ public class MissionProjet {
     @Column(nullable = false)
     private StatutMission statut = StatutMission.A_FAIRE;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "mission_cohorte_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "mission_cohorte_id")
     private MissionCohorte missionCohorte;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "mission_etape_id")
+    private MissionEtape missionEtape;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private PrioriteMission priorite = PrioriteMission.MOYENNE;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "projet_id", nullable = false)

@@ -26,6 +26,7 @@ import lombok.Setter;
 import sn.jappo.jappo_backend.cohorte.entity.Cohorte;
 import sn.jappo.jappo_backend.ressource.entity.Ressource;
 import sn.jappo.jappo_backend.structure.entity.Structure;
+import sn.jappo.jappo_backend.parcours.entity.Etape;
 
 @Getter
 @Setter
@@ -60,6 +61,15 @@ public class MissionCohorte {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "modele_id")
     private MissionModele modele;
+
+    /**
+     * Étape à laquelle cette mission de cohorte appartient.
+     * Nullable pour compatibilité avec les données existantes.
+     * Pour les nouvelles missions, ce champ doit être renseigné.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "etape_id")
+    private Etape etape;
 
   
     /**

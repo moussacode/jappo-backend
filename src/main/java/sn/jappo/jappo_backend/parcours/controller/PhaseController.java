@@ -9,6 +9,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import lombok.RequiredArgsConstructor;
+import sn.jappo.jappo_backend.cohorte.dto.CohorteResponse;
 import sn.jappo.jappo_backend.parcours.dto.CreatePhaseRequest;
 import sn.jappo.jappo_backend.parcours.dto.PhaseResponse;
 import sn.jappo.jappo_backend.parcours.service.PhaseService;
@@ -49,6 +50,18 @@ public class PhaseController {
     ) {
         return ResponseEntity.ok(
                 phaseService.getPhaseById(phaseId)
+        );
+    }
+
+    /**
+     * Récupérer les cohortes liées à une phase.
+     */
+    @GetMapping("/{phaseId}/cohortes")
+    public ResponseEntity<List<CohorteResponse>> getCohortesByPhase(
+            @PathVariable UUID phaseId
+    ) {
+        return ResponseEntity.ok(
+                phaseService.getCohortesByPhase(phaseId)
         );
     }
 

@@ -24,6 +24,8 @@ import sn.jappo.jappo_backend.parcours.entity.Phase;
 import sn.jappo.jappo_backend.parcours.repository.ParcoursPhaseRepository;
 import sn.jappo.jappo_backend.parcours.repository.ParcoursRepository;
 import sn.jappo.jappo_backend.parcours.repository.PhaseRepository;
+import sn.jappo.jappo_backend.programme.entity.Programme;
+import sn.jappo.jappo_backend.programme.repository.ProgrammeRepository;
 import sn.jappo.jappo_backend.structure.entity.MembreStructure;
 import sn.jappo.jappo_backend.structure.entity.RoleMembreStructure;
 import sn.jappo.jappo_backend.structure.entity.StatutMembre;
@@ -52,6 +54,7 @@ public class CohorteService {
     private final ParcoursRepository parcoursRepository;
     private final PhaseRepository phaseRepository;
     private final ParcoursPhaseRepository parcoursPhaseRepository;
+    private final ProgrammeRepository programmeRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final MembreStructureRepository membreStructureRepository;
     private final UserRepository userRepository;
@@ -65,6 +68,7 @@ public class CohorteService {
             ParcoursRepository parcoursRepository,
             PhaseRepository phaseRepository,
             ParcoursPhaseRepository parcoursPhaseRepository,
+            ProgrammeRepository programmeRepository,
             ApplicationEventPublisher eventPublisher,
             MembreStructureRepository membreStructureRepository,
             UserRepository userRepository,
@@ -77,6 +81,7 @@ public class CohorteService {
         this.parcoursRepository = parcoursRepository;
         this.phaseRepository = phaseRepository;
         this.parcoursPhaseRepository = parcoursPhaseRepository;
+        this.programmeRepository = programmeRepository;
         this.eventPublisher = eventPublisher;
         this.membreStructureRepository = membreStructureRepository;
         this.userRepository = userRepository;
@@ -111,6 +116,16 @@ public class CohorteService {
         cohorte.setDateFin(request.dateFin());
         cohorte.setStatut(StatutCohorte.PLANIFIEE);
         cohorte.setStructure(structure);
+
+        // Gestion du programme
+        if (request.programmeId() != null) {
+            Programme programme = programmeRepository.findByIdAndStructureId(request.programmeId(), activeStructureId)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.NOT_FOUND,
+                            "Programme introuvable ou n'appartient pas à votre structure"
+                    ));
+            cohorte.setProgramme(programme);
+        }
 
         if (request.coachIds() != null && !request.coachIds().isEmpty()) {
             cohorte.setCoachs(validerEtRecupererCoachs(request.coachIds(), activeStructureId));
@@ -260,13 +275,23 @@ public class CohorteService {
             cohorte.setStatut(request.statut());
         }
 
-        if (request.parcoursId() != null || request.phaseId() != null) {
+        if (request.parcoursId() != null || request.phaseId() != null || request.programmeId() != null) {
 
             UUID parcoursId = request.parcoursId() != null
                     ? request.parcoursId()
                     : cohorte.getParcours().getId();
 
             UUID phaseId = request.phaseId();
+
+            // Gestion du programme
+            if (request.programmeId() != null) {
+                Programme programme = programmeRepository.findByIdAndStructureId(request.programmeId(), activeStructureId)
+                        .orElseThrow(() -> new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Programme introuvable ou n'appartient pas à votre structure"
+                        ));
+                cohorte.setProgramme(programme);
+            }
 
             if (phaseId != null) {
                 appliquerParcoursEtPhase(
@@ -611,6 +636,16 @@ public class CohorteService {
                                 HttpStatus.BAD_REQUEST,
                                 "La phase n'appartient pas à ce parcours"
                         ));
+
+        // Vérifier la cohérence programme/parcours si un programme est déjà associé à la cohorte
+        if (c.getProgramme() != null) {
+            if (parcours.getProgramme() == null || !parcours.getProgramme().getId().equals(c.getProgramme().getId())) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Le parcours sélectionné n'appartient pas au programme de la cohorte"
+                );
+            }
+        }
 
         Phase phase = parcoursPhase.getPhase();
 

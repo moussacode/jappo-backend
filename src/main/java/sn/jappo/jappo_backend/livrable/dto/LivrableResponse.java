@@ -23,6 +23,7 @@ public record LivrableResponse(
         LocalDate dateEcheanceCorrection,
         LocalDateTime dateDepot,
         LocalDateTime dateEvaluation,
+        LocalDateTime dateValidation,
         UUID missionProjetId,
         String titreMission,
         UUID projetId,
@@ -61,6 +62,7 @@ public record LivrableResponse(
                 null,
                 dateDepot,
                 null,
+                null,
                 missionProjetId,
                 titreMission,
                 projetId,
@@ -69,4 +71,4 @@ public record LivrableResponse(
                 List.of()
         );
     }
-}
+}

@@ -40,4 +40,6 @@ public interface LivrableRepository extends JpaRepository<Livrable, UUID> {
             WHERE l.missionProjet.missionCohorte.id = :missionCohorteId
             """)
     boolean existsSoumissionForMissionCohorte(@Param("missionCohorteId") UUID missionCohorteId);
+
+    List<Livrable> findAllByProjetId(UUID projetId);
 }

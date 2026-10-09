@@ -72,6 +72,8 @@ public class Livrable {
 
     private LocalDateTime dateEvaluation;
 
+    private LocalDateTime dateValidation;
+
     @CreationTimestamp
     private LocalDateTime dateDepot;
 
@@ -95,4 +97,4 @@ public class Livrable {
         versions.add(version);
         version.setLivrable(this);
     }
-}
+}

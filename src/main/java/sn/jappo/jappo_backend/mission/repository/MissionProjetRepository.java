@@ -17,10 +17,20 @@ public interface MissionProjetRepository extends JpaRepository<MissionProjet, UU
     // Vérifier l'existence d'une MissionProjet pour un couple (missionCohorte, projet)
     boolean existsByMissionCohorteIdAndProjetIdAndStructureId(UUID missionCohorteId, UUID projetId, UUID structureId);
 
+    boolean existsByMissionEtapeIdAndProjetIdAndStructureId(UUID missionEtapeId, UUID projetId, UUID structureId);
+
     long countByProjetIdAndStructureId(UUID projetId, UUID structureId);
 
     long countByProjetIdAndStructureIdAndStatut(UUID projetId, UUID structureId, StatutMission statut);
 
     // Filtrage par archivage
     List<MissionProjet> findAllByStructureIdAndArchive(UUID structureId, boolean archive);
+
+    List<MissionProjet> findAllByProjetId(UUID projetId);
+
+    // Récupérer les missions projet pour une mission de cohorte et un projet spécifiques
+    List<MissionProjet> findByMissionCohorteIdAndProjetIdAndStructureId(UUID missionCohorteId, UUID projetId, UUID structureId);
+
+    // Récupérer les missions projet pour une mission d'étape et un projet spécifiques
+    List<MissionProjet> findByMissionEtapeIdAndProjetIdAndStructureId(UUID missionEtapeId, UUID projetId, UUID structureId);
 }

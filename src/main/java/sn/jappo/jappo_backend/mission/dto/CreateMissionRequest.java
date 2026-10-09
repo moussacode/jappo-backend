@@ -18,7 +18,7 @@ public record CreateMissionRequest(
         UUID projetId,    // Optionnel : si ciblée sur un seul projet/startup
         UUID assigneAId,  // Optionnel : si assignée à un coach ou membre spécifique
         UUID modeleId,    // Optionnel : si issue d'un modèle du catalogue
-
+        UUID etapeId,     // Optionnel : si rattachée directement à une étape
         Boolean enregistrerCommeModele // Optionnel : sauvegarder comme modèle réutilisable
 ) {
     public CreateMissionRequest {

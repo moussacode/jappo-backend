@@ -394,6 +394,7 @@ public class LivrableService {
                 livrable.getDateEcheanceCorrection(),
                 livrable.getDateDepot(),
                 livrable.getDateEvaluation(),
+                livrable.getDateValidation(),
                 livrable.getMissionProjet().getId(),
                 livrable.getMissionProjet().getMissionCohorte().getTitre(),
                 livrable.getProjet().getId(),

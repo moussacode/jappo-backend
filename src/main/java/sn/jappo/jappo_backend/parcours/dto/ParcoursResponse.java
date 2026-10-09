@@ -14,5 +14,7 @@ public class ParcoursResponse {
     private boolean archive;
     private LocalDateTime dateCreation;
     private LocalDateTime dateModification;
+    private UUID programmeId;
+    private String programmeNom;
     private List<PhaseResponse> phases;
 }

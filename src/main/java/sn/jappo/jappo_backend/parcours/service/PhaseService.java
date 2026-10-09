@@ -10,6 +10,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import lombok.RequiredArgsConstructor;
+import sn.jappo.jappo_backend.cohorte.dto.CohorteResponse;
+import sn.jappo.jappo_backend.cohorte.service.CohorteService;
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import sn.jappo.jappo_backend.parcours.dto.CreatePhaseRequest;
 import sn.jappo.jappo_backend.parcours.dto.PhaseResponse;
@@ -17,6 +19,7 @@ import sn.jappo.jappo_backend.parcours.entity.Phase;
 import sn.jappo.jappo_backend.parcours.repository.PhaseRepository;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
+import sn.jappo.jappo_backend.cohorte.repository.CohorteRepository;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +27,8 @@ public class PhaseService {
 
     private final PhaseRepository phaseRepository;
     private final StructureRepository structureRepository;
+    private final CohorteRepository cohorteRepository;
+    private final CohorteService cohorteService;
 
     // -----------------------------------------------------------------------
     // LECTURE
@@ -76,6 +81,26 @@ public class PhaseService {
         );
 
         return mapToResponse(phase);
+    }
+
+    /**
+     * Récupérer les cohortes attachées à une phase d'une structure donnée.
+     */
+    @Transactional(readOnly = true)
+    public List<CohorteResponse> getCohortesByPhase(UUID phaseId) {
+
+        UUID structureId = getRequiredTenantId();
+
+        getPhaseForTenant(phaseId, structureId);
+
+        return cohorteRepository
+                .findAllByStructureIdAndPhase_Id(structureId, phaseId)
+                .stream()
+                .sorted((a, b) -> String.CASE_INSENSITIVE_ORDER.compare(
+                        a.getNom() != null ? a.getNom() : "",
+                        b.getNom() != null ? b.getNom() : ""))
+                .map(cohorteService::mapToResponse)
+                .toList();
     }
 
     // -----------------------------------------------------------------------

@@ -29,6 +29,9 @@ public interface CohorteRepository extends JpaRepository<Cohorte, UUID> {
     /** Cohortes actives d'un parcours et d'une phase donnée. */
     List<Cohorte> findAllByStructureIdAndParcours_IdAndPhase_Id(UUID structureId, UUID parcoursId, UUID phaseId);
 
+    /** Cohortes d'une structure pour une phase donnée. */
+    List<Cohorte> findAllByStructureIdAndPhase_Id(UUID structureId, UUID phaseId);
+
     boolean existsByPhase_Id(UUID phaseId);
 
     /** Vérifie si une cohorte a des projets actifs (via participations). */

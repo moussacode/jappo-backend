@@ -20,6 +20,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import sn.jappo.jappo_backend.cohorte.entity.Cohorte;
+import sn.jappo.jappo_backend.parcours.entity.Etape;
 import sn.jappo.jappo_backend.parcours.entity.Parcours;
 import sn.jappo.jappo_backend.parcours.entity.Phase;
 import sn.jappo.jappo_backend.structure.entity.Structure;
@@ -74,6 +75,10 @@ public class Ressource {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "phase_id")
     private Phase phase;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "etape_id")
+    private Etape etape;
 
     @Column(nullable = false)
     private boolean archivee = false;

@@ -13,6 +13,7 @@ public record UpdateCohorteRequest(
         LocalDate dateFin,
         UUID parcoursId,
         UUID phaseId,
+        UUID programmeId,
         StatutCohorte statut,
         List<UUID> coachIds
 ) {
@@ -25,6 +26,6 @@ public record UpdateCohorteRequest(
             UUID phaseId,
             StatutCohorte statut
     ) {
-        this(nom, description, dateDebut, dateFin, parcoursId, phaseId, statut, null);
+        this(nom, description, dateDebut, dateFin, parcoursId, phaseId, null, statut, null);
     }
 }

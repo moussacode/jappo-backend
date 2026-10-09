@@ -62,4 +62,12 @@ public interface ParcoursPhaseRepository
             UUID parcoursId,
             UUID phaseId
     );
+
+    /**
+     * Récupérer une association précise (alias pour compatibilité).
+     */
+    Optional<ParcoursPhase> findByParcoursIdAndPhaseId(
+            UUID parcoursId,
+            UUID phaseId
+    );
 }

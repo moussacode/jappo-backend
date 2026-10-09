@@ -19,6 +19,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import sn.jappo.jappo_backend.structure.entity.Structure;
+import sn.jappo.jappo_backend.parcours.entity.Etape;
 
 
 @Getter
@@ -41,11 +42,28 @@ public class MissionModele {
     @Column(nullable = false)
     private PrioriteMission prioriteParDefaut = PrioriteMission.MOYENNE;
 
+    /**
+     * Position de la mission dans l'étape (nullable pour l'instant).
+     */
+    private Integer ordre;
+
+    /**
+     * true = obligatoire
+     * false = optionnelle
+     */
+    @Column(nullable = false)
+    private boolean obligatoire = true;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "structure_id", nullable = false)
     private Structure structure;
 
-    
+    /**
+     * Étape à laquelle cette mission appartient (nullable pour l'instant).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "etape_id")
+    private Etape etape;
 
     @CreationTimestamp
     private LocalDateTime dateCreation;

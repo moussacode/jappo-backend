@@ -19,4 +19,7 @@ public interface ParcoursRepository extends JpaRepository<Parcours, UUID> {
     default Optional<Parcours> findByIdAndStructureIdAndArchiveFalse(UUID id, UUID structureId) {
         return findByIdAndStructureId(id, structureId).filter(p -> !p.isArchive());
     }
+    /** Méthodes pour le nouveau modèle Programme */
+    List<Parcours> findByProgrammeId(UUID programmeId);
+    Optional<Parcours> findByIdAndProgrammeId(UUID id, UUID programmeId);
 }

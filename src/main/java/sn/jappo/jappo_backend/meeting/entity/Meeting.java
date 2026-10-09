@@ -54,6 +54,15 @@ public class Meeting {
     @Column(length = 500)
     private String address;
 
+    @Column(length = 500)
+    private String objectif;
+
+    @Column(columnDefinition = "TEXT")
+    private String compteRendu;
+
+    @Column(columnDefinition = "TEXT")
+    private String decisions;
+
     @Column(nullable = false)
     private LocalDateTime scheduledAt;
 

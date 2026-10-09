@@ -10,6 +10,7 @@ import sn.jappo.jappo_backend.mission.entity.StatutMission;
 public record MissionResponse(
         UUID id,                    // MissionProjet ID
         UUID missionCohorteId,      // MissionCohorte ID (Modèle parent)
+        UUID missionEtapeId,        // MissionEtape ID (origine étape si applicable)
         String titre,
         String description,
         LocalDate dateEcheance,

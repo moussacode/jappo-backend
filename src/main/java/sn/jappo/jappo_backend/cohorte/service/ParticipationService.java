@@ -25,6 +25,7 @@ import sn.jappo.jappo_backend.mission.entity.MissionProjet;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
 import sn.jappo.jappo_backend.mission.repository.MissionCohorteRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
+import sn.jappo.jappo_backend.mission.service.MissionEtapeService;
 import sn.jappo.jappo_backend.parcours.entity.ParcoursPhase;
 import sn.jappo.jappo_backend.parcours.repository.ParcoursPhaseRepository;
 import sn.jappo.jappo_backend.projet.dto.MissionNonValidee;
@@ -54,6 +55,7 @@ public class ParticipationService {
     private final StructureRepository structureRepository;
     private final MissionCohorteRepository missionCohorteRepository;
     private final MissionProjetRepository missionProjetRepository;
+    private final MissionEtapeService missionEtapeService;
     private final CohorteService cohorteService;
     private final ParcoursPhaseRepository parcoursPhaseRepository;
 
@@ -97,6 +99,7 @@ public class ParticipationService {
 
         // Créer les MissionProjet pour toutes les missions de la cohorte
         assignerMissionsCohorteAuProjet(projet, cohorte);
+        missionEtapeService.synchroniserMissionEtapePourProjet(projet, cohorte);
 
         return participation;
     }

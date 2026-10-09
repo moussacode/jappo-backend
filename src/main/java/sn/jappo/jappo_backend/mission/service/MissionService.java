@@ -16,11 +16,13 @@ import sn.jappo.jappo_backend.mission.dto.MissionResponse;
 import sn.jappo.jappo_backend.mission.dto.MissionCohorteResponse;
 import sn.jappo.jappo_backend.mission.dto.UpdateStatutMissionRequest;
 import sn.jappo.jappo_backend.mission.entity.MissionCohorte;
+import sn.jappo.jappo_backend.mission.entity.MissionEtape;
 import sn.jappo.jappo_backend.mission.entity.MissionProjet;
 import sn.jappo.jappo_backend.mission.entity.PrioriteMission;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
 import sn.jappo.jappo_backend.mission.entity.MissionModele;
 import sn.jappo.jappo_backend.mission.repository.MissionCohorteRepository;
+import sn.jappo.jappo_backend.mission.repository.MissionEtapeRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionModeleRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
 import sn.jappo.jappo_backend.projet.entity.Projet;
@@ -33,11 +35,14 @@ import sn.jappo.jappo_backend.events.MissionStatusChangedEvent;
 import sn.jappo.jappo_backend.livrable.repository.LivrableRepository;
 
 import sn.jappo.jappo_backend.ressource.entity.Ressource;
+import sn.jappo.jappo_backend.parcours.entity.Etape;
+import sn.jappo.jappo_backend.parcours.repository.EtapeRepository;
 
 @Service
 public class MissionService {
 
     private final MissionCohorteRepository missionCohorteRepository;
+    private final MissionEtapeRepository missionEtapeRepository;
     private final MissionModeleRepository missionModeleRepository;
     private final MissionProjetRepository missionProjetRepository;
     private final StructureRepository structureRepository;
@@ -46,10 +51,12 @@ public class MissionService {
     private final UserRepository userRepository;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final LivrableRepository livrableRepository;
-    
+    private final EtapeRepository etapeRepository;
+
 
     public MissionService(
             MissionCohorteRepository missionCohorteRepository,
+            MissionEtapeRepository missionEtapeRepository,
             MissionModeleRepository missionModeleRepository,
             MissionProjetRepository missionProjetRepository,
             StructureRepository structureRepository,
@@ -57,10 +64,12 @@ public class MissionService {
             ProjetRepository projetRepository,
             UserRepository userRepository,
             org.springframework.context.ApplicationEventPublisher eventPublisher,
-            LivrableRepository livrableRepository
-            
+            LivrableRepository livrableRepository,
+            EtapeRepository etapeRepository
+
     ) {
         this.missionCohorteRepository = missionCohorteRepository;
+        this.missionEtapeRepository = missionEtapeRepository;
         this.missionModeleRepository = missionModeleRepository;
         this.missionProjetRepository = missionProjetRepository;
         this.structureRepository = structureRepository;
@@ -69,7 +78,8 @@ public class MissionService {
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
         this.livrableRepository = livrableRepository;
-       
+        this.etapeRepository = etapeRepository;
+
     }
 
     @Transactional
@@ -79,6 +89,39 @@ public class MissionService {
         Structure structure = structureRepository.findById(activeStructureId)
                 .orElseThrow(() -> new RuntimeException("Structure introuvable pour l'ID: " + activeStructureId));
 
+        if (request.etapeId() != null) {
+            MissionEtape missionEtape = missionEtapeRepository.findByIdAndStructureId(request.etapeId(), activeStructureId)
+                    .orElseThrow(() -> new RuntimeException("Mission d'étape introuvable ou n'appartient pas à votre structure"));
+
+            List<MissionProjet> instancesCrees = new ArrayList<>();
+
+            if (request.projetId() != null) {
+                Projet projet = projetRepository.findByIdAndStructureId(request.projetId(), activeStructureId)
+                        .orElseThrow(() -> new RuntimeException("Projet introuvable"));
+
+                MissionProjet mp = createProjetInstanceFromMissionEtape(missionEtape, projet, request.assigneAId(), structure);
+                instancesCrees.add(missionProjetRepository.save(mp));
+            } else if (request.cohorteId() != null) {
+                List<Projet> projets = projetRepository.findAllByCohorteIdAndStructureId(request.cohorteId(), activeStructureId);
+
+                if (projets.isEmpty()) {
+                    return List.of();
+                }
+
+                for (Projet p : projets) {
+                    UUID assigneId = request.assigneAId() != null ? request.assigneAId() :
+                            (p.getEntrepreneur() != null ? p.getEntrepreneur().getId() : null);
+
+                    MissionProjet mp = createProjetInstanceFromMissionEtape(missionEtape, p, assigneId, structure);
+                    instancesCrees.add(missionProjetRepository.save(mp));
+                }
+            } else {
+                throw new IllegalArgumentException("La mission de parcours doit être rattachée à au moins une cohorte ou un projet.");
+            }
+
+            return instancesCrees.stream().map(this::mapToResponse).toList();
+        }
+
         // 1. Création du Modèle Consigne (MissionCohorte)
         MissionCohorte missionCohorte = new MissionCohorte();
         missionCohorte.setTitre(request.titre());
@@ -87,6 +130,14 @@ public class MissionService {
         missionCohorte.setPriorite(request.priorite() != null ? request.priorite() : PrioriteMission.MOYENNE);
         missionCohorte.setStructure(structure);
 
+        // Gestion du lien avec une étape directe
+        Etape etape = null;
+        if (request.etapeId() != null) {
+            etape = etapeRepository.findByIdAndStructureId(request.etapeId(), activeStructureId)
+                    .orElseThrow(() -> new RuntimeException("Étape introuvable ou n'appartient pas à votre structure"));
+            missionCohorte.setEtape(etape);
+        }
+
         // Gestion du lien avec un modèle de catalogue
         if (Boolean.TRUE.equals(request.enregistrerCommeModele())) {
             MissionModele nouveauModele = new MissionModele();
@@ -94,17 +145,26 @@ public class MissionService {
             nouveauModele.setDescription(request.description() != null ? request.description().trim() : null);
             nouveauModele.setPrioriteParDefaut(request.priorite() != null ? request.priorite() : PrioriteMission.MOYENNE);
             nouveauModele.setStructure(structure);
-            
-           
+            // Si une étape est fournie, l'attacher au modèle
+            if (etape != null) {
+                nouveauModele.setEtape(etape);
+            }
+
             MissionModele savedModele = missionModeleRepository.save(nouveauModele);
             missionCohorte.setModele(savedModele);
         } else if (request.modeleId() != null) {
             MissionModele modeleExistant = missionModeleRepository.findByIdAndStructureId(request.modeleId(), activeStructureId)
-                    .orElse(null);
+                    .orElseThrow(() -> new RuntimeException("Modèle introuvable ou n'appartient pas à votre structure"));
             missionCohorte.setModele(modeleExistant);
+            // Vérifier la cohérence entre l'étape fournie et celle du modèle
+            if (etape != null && modeleExistant.getEtape() != null && !modeleExistant.getEtape().getId().equals(etape.getId())) {
+                throw new IllegalArgumentException("L'étape fournie ne correspond pas à l'étape du modèle");
+            }
+            // Si aucune étape n'est fournie mais que le modèle en a une, utiliser celle du modèle
+            if (etape == null && modeleExistant.getEtape() != null) {
+                missionCohorte.setEtape(modeleExistant.getEtape());
+            }
         }
-
-      
 
         if (request.cohorteId() != null) {
             Cohorte cohorte = cohorteRepository.findByIdAndStructureId(request.cohorteId(), activeStructureId)
@@ -128,7 +188,7 @@ public class MissionService {
 
             MissionProjet mp = createProjetInstance(savedCohorteMission, projet, request.assigneAId(), structure);
             instancesCrees.add(missionProjetRepository.save(mp));
-        } 
+        }
         // 2b. Si ciblé au niveau d'une cohorte -> Génération des instances pour toutes les startups
         else if (request.cohorteId() != null) {
             List<Projet> projets = projetRepository.findAllByCohorteIdAndStructureId(request.cohorteId(), activeStructureId);
@@ -139,7 +199,7 @@ public class MissionService {
             }
 
             for (Projet p : projets) {
-                UUID assigneId = request.assigneAId() != null ? request.assigneAId() : 
+                UUID assigneId = request.assigneAId() != null ? request.assigneAId() :
                         (p.getEntrepreneur() != null ? p.getEntrepreneur().getId() : null);
 
                 MissionProjet mp = createProjetInstance(savedCohorteMission, p, assigneId, structure);
@@ -157,28 +217,29 @@ public class MissionService {
         String nomCohorte = mc.getCohorte() != null ? mc.getCohorte().getNom() : null;
         
         return new MissionResponse(
-                mc.getId(),                                              // ID (MissionCohorte ID pour les missions sans instance)
-                mc.getId(),                                              // missionCohorteId
+                mc.getId(),
+                mc.getId(),
+                null,
                 mc.getTitre(),
                 mc.getDescription(),
                 mc.getDateEcheance(),
                 StatutMission.A_FAIRE,
                 mc.getPriorite(),
-                null,                                                    // projetId
-                null,                                                    // nomProjet
-                cohorteId,                                               // cohorteId
-                nomCohorte,                                              // nomCohorte
-                null,                                                    // entrepreneurId
-                null,                                                    // nomEntrepreneur
-                null,                                                    // assigneAId
-                null,                                                    // nomAssigneA
-                null,                                                    // creeParId
-                null,                                                    // nomCreePar
+                null,
+                null,
+                cohorteId,
+                nomCohorte,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 mc.getStructure() != null ? mc.getStructure().getId() : null,
                 mc.getDateCreation(),
-                null,                                                    // dateModification
-                1,                                                       // nombreLivrablesAttendus
-                0                                                        // nombreLivrablesDeposes
+                null,
+                1,
+                0
         );
     }
 
@@ -338,10 +399,26 @@ public class MissionService {
     private MissionProjet createProjetInstance(MissionCohorte mc, Projet p, UUID assigneAId, Structure s) {
         MissionProjet mp = new MissionProjet();
         mp.setMissionCohorte(mc);
+        mp.setMissionEtape(null);
         mp.setProjet(p);
         mp.setStatut(StatutMission.A_FAIRE);
         mp.setStructure(s);
-        
+
+        if (assigneAId != null) {
+            User user = userRepository.findById(assigneAId).orElse(null);
+            mp.setAssigneA(user);
+        }
+
+        return mp;
+    }
+
+    private MissionProjet createProjetInstanceFromMissionEtape(MissionEtape missionEtape, Projet p, UUID assigneAId, Structure s) {
+        MissionProjet mp = new MissionProjet();
+        mp.setMissionEtape(missionEtape);
+        mp.setMissionCohorte(null);
+        mp.setProjet(p);
+        mp.setStatut(StatutMission.A_FAIRE);
+        mp.setStructure(s);
 
         if (assigneAId != null) {
             User user = userRepository.findById(assigneAId).orElse(null);
@@ -406,13 +483,14 @@ public class MissionService {
         int livrablesDeposes = mp.getLivrables() != null ? mp.getLivrables().size() : 0;
 
         return new MissionResponse(
-                mp.getId(),                                              // ID de l'instance (MissionProjet)
-                mc != null ? mc.getId() : null,                          // ID du modèle (MissionCohorte)
-                mc != null ? mc.getTitre() : "—",
-                mc != null ? mc.getDescription() : null,
+                mp.getId(),
+                mc != null ? mc.getId() : null,
+                mp.getMissionEtape() != null ? mp.getMissionEtape().getId() : null,
+                mc != null ? mc.getTitre() : (mp.getMissionEtape() != null ? mp.getMissionEtape().getTitre() : "—"),
+                mc != null ? mc.getDescription() : (mp.getMissionEtape() != null ? mp.getMissionEtape().getDescription() : null),
                 mc != null ? mc.getDateEcheance() : null,
                 mp.getStatut(),
-                mc != null ? mc.getPriorite() : PrioriteMission.MOYENNE,
+                mc != null ? mc.getPriorite() : (mp.getMissionEtape() != null ? PrioriteMission.MOYENNE : PrioriteMission.MOYENNE),
                 mp.getProjet() != null ? mp.getProjet().getId() : null,
                 nomProjet,
                 cohorteId,
@@ -421,13 +499,13 @@ public class MissionService {
                 nomEntrepreneur,
                 mp.getAssigneA() != null ? mp.getAssigneA().getId() : null,
                 nomAssigneA,
-                null,                                                    // creeParId (si applicable)
-                null,                                                    // nomCreePar (si applicable)
+                null,
+                null,
                 mp.getStructure() != null ? mp.getStructure().getId() : null,
                 mp.getDateCreation(),
-                null,                                                    // dateModification
-                1,                                                       // nombreLivrablesAttendus (par défaut 1)
-                livrablesDeposes                                         // nombreLivrablesDeposes calculé
+                null,
+                1,
+                livrablesDeposes
         );
     }
 

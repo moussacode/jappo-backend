@@ -17,6 +17,11 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import sn.jappo.jappo_backend.structure.entity.Structure;
+import java.util.ArrayList;
+import java.util.List;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 
 @Getter
 @Setter
@@ -57,6 +62,18 @@ public class Phase {
 
     @Column
     private LocalDateTime dateModification;
+
+    /**
+     * Étapes contenues dans cette phase.
+     */
+    @OneToMany(
+            mappedBy = "phase",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true,
+            fetch = FetchType.LAZY
+    )
+    @OrderBy("ordre ASC")
+    private List<Etape> etapes = new ArrayList<>();
 
     public boolean isActif() {
         return !archive;
