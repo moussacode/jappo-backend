@@ -3,6 +3,8 @@ package sn.jappo.jappo_backend.projet.repository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -20,6 +22,13 @@ public interface ProjetRepository extends JpaRepository<Projet, UUID> {
     List<Projet> findAllByCohorteIdAndStructureIdAndArchive(UUID cohorteId, UUID structureId, boolean archive);
 
     Optional<Projet> findByIdAndStructureId(UUID id, UUID structureId);
+
+        @Lock(LockModeType.PESSIMISTIC_WRITE)
+        @Query("SELECT p FROM Projet p WHERE p.id = :id AND p.structure.id = :structureId")
+        Optional<Projet> findLockedByIdAndStructureId(
+            @Param("id") UUID id,
+            @Param("structureId") UUID structureId
+        );
 
     Optional<Projet> findByEntrepreneurIdAndStructureId(UUID entrepreneurId, UUID structureId);
 

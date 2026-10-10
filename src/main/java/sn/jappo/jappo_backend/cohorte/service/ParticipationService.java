@@ -21,13 +21,17 @@ import sn.jappo.jappo_backend.cohorte.repository.CohorteRepository;
 import sn.jappo.jappo_backend.cohorte.repository.ParticipationCohorteRepository;
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import sn.jappo.jappo_backend.mission.entity.MissionCohorte;
+import sn.jappo.jappo_backend.mission.entity.MissionEtape;
 import sn.jappo.jappo_backend.mission.entity.MissionProjet;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
 import sn.jappo.jappo_backend.mission.repository.MissionCohorteRepository;
+import sn.jappo.jappo_backend.mission.repository.MissionEtapeRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
 import sn.jappo.jappo_backend.mission.service.MissionEtapeService;
+import sn.jappo.jappo_backend.parcours.repository.EtapeRepository;
 import sn.jappo.jappo_backend.parcours.entity.ParcoursPhase;
 import sn.jappo.jappo_backend.parcours.repository.ParcoursPhaseRepository;
+import sn.jappo.jappo_backend.progression.service.ProgressionService;
 import sn.jappo.jappo_backend.projet.dto.MissionNonValidee;
 import sn.jappo.jappo_backend.projet.dto.ParticipationCohorteResponse;
 import sn.jappo.jappo_backend.projet.dto.PromotionGroupeeResultat;
@@ -54,8 +58,11 @@ public class ParticipationService {
     private final CohorteRepository cohorteRepository;
     private final StructureRepository structureRepository;
     private final MissionCohorteRepository missionCohorteRepository;
+        private final MissionEtapeRepository missionEtapeRepository;
     private final MissionProjetRepository missionProjetRepository;
     private final MissionEtapeService missionEtapeService;
+        private final EtapeRepository etapeRepository;
+        private final ProgressionService progressionService;
     private final CohorteService cohorteService;
     private final ParcoursPhaseRepository parcoursPhaseRepository;
 
@@ -198,6 +205,7 @@ public class ParticipationService {
                 cohorteCible,
                 currentUser
         );
+        progressionService.synchroniserPhaseApresPromotion(projetId, cohorteCible);
 
         return projet;
     }
@@ -450,7 +458,7 @@ public class ParticipationService {
             return List.of();
         }
 
-        return missionProjetRepository
+        List<MissionNonValidee> missionsNonValidees = new ArrayList<>(missionProjetRepository
                 .findAllByProjetIdAndStructureId(
                         projet.getId(),
                         structureId
@@ -474,7 +482,32 @@ public class ParticipationService {
                                         : null
                         )
                 )
-                .toList();
+                .toList());
+
+        UUID phaseActuelleId = projet.getCohorte().getPhase().getId();
+        etapeRepository.findAllByPhaseIdOrderByOrdreAsc(phaseActuelleId).stream()
+                .filter(etape -> !etape.isArchive())
+                .flatMap(etape -> missionEtapeRepository
+                        .findByEtapeIdAndStructureIdOrderByOrdreAsc(etape.getId(), structureId).stream())
+                .filter(MissionEtape::isObligatoire)
+                .forEach(missionEtape -> {
+                    List<MissionProjet> instances = missionProjetRepository
+                            .findByMissionEtapeIdAndProjetIdAndStructureId(
+                                    missionEtape.getId(), projet.getId(), structureId);
+                                        List<MissionProjet> instancesActives = instances.stream()
+                                                        .filter(instance -> !instance.isArchive())
+                                                        .toList();
+                                        if (instancesActives.isEmpty()) {
+                        missionsNonValidees.add(new MissionNonValidee(missionEtape.getTitre(), "NON_ASSIGNEE"));
+                    } else {
+                                                instancesActives.stream()
+                                .filter(instance -> instance.getStatut() != StatutMission.VALIDE)
+                                .forEach(instance -> missionsNonValidees.add(new MissionNonValidee(
+                                        missionEtape.getTitre(),
+                                        instance.getStatut() != null ? instance.getStatut().name() : null)));
+                    }
+                });
+        return missionsNonValidees;
     }
 
     private List<MissionNonValidee> getMissionsNonValidesSafe(

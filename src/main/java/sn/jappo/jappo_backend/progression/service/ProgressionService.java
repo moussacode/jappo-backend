@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
+import sn.jappo.jappo_backend.cohorte.entity.Cohorte;
 import sn.jappo.jappo_backend.parcours.entity.Etape;
 import sn.jappo.jappo_backend.parcours.entity.Parcours;
 import sn.jappo.jappo_backend.parcours.entity.ParcoursPhase;
@@ -261,6 +262,47 @@ public class ProgressionService {
         
         Progression saved = progressionRepository.save(progression);
         return mapToDTO(saved);
+    }
+
+    @Transactional
+    public void synchroniserPhaseApresPromotion(UUID projetId, Cohorte cohorteCible) {
+        if (cohorteCible == null || cohorteCible.getParcours() == null || cohorteCible.getPhase() == null) {
+            return;
+        }
+
+        Progression progression = progressionRepository
+                .findByProjetIdAndParcoursId(projetId, cohorteCible.getParcours().getId())
+                .orElse(null);
+        if (progression == null || progression.getPhase() == null
+                || progression.getPhase().getId().equals(cohorteCible.getPhase().getId())) {
+            return;
+        }
+
+        Etape etapeCible = etapeRepository.findAllByPhaseIdOrderByOrdreAsc(cohorteCible.getPhase().getId()).stream()
+                .filter(etape -> !etape.isArchive())
+                .filter(etape -> etape.getStructure() != null
+                        && progression.getProjet().getStructure().getId().equals(etape.getStructure().getId()))
+                .findFirst()
+                .orElse(null);
+
+        HistoriqueProgression historique = new HistoriqueProgression();
+        historique.setProgression(progression);
+        historique.setEtapeEntree(progression.getEtape());
+        historique.setEtapeSortie(etapeCible);
+        historique.setPhaseEntree(progression.getPhase());
+        historique.setPhaseSortie(cohorteCible.getPhase());
+        historique.setRaison("PROMOTION_COHORTE");
+        historique.setTypeChangement(TypeChangement.AUTOMATIQUE);
+        historiqueProgressionRepository.save(historique);
+
+        progression.setPhase(cohorteCible.getPhase());
+        progression.setEtape(etapeCible);
+        if (progression.getStatut() == StatutProgression.TERMINE) {
+            progression.setStatut(StatutProgression.EN_COURS);
+            progression.setDateFin(null);
+        }
+        progression.setDateDerniereMaj(LocalDateTime.now());
+        progressionRepository.save(progression);
     }
 
     @Transactional
@@ -523,7 +565,7 @@ public class ProgressionService {
         return false;
     }
 
-        @Transactional(readOnly = true)
+        @Transactional
         public FeuilleRouteProjetDTO getFeuilleRouteProjet(UUID projetId) {
         UUID structureId = getRequiredTenantId();
         Projet projet = projetRepository.findByIdAndStructureId(projetId, structureId)
@@ -543,6 +585,9 @@ public class ProgressionService {
                             .filter(p -> p.getParcours() != null && parcours.getId().equals(p.getParcours().getId()))
                             .findFirst()
                             .orElse(null));
+                    if (progression == null) {
+                        progression = initialiserProgressionCohorte(projetId, structureId, parcours);
+                    }
         } else {
             progression = progressions.stream()
                     .filter(p -> p.getStatut() == StatutProgression.EN_COURS || p.getStatut() == StatutProgression.EN_PAUSE)
@@ -644,6 +689,48 @@ public class ProgressionService {
             routeProgression != null ? globalPercentage : null,
             phaseDtos);
         }
+
+            private Progression initialiserProgressionCohorte(UUID projetId, UUID structureId, Parcours parcours) {
+            Projet projetVerrouille = projetRepository.findLockedByIdAndStructureId(projetId, structureId)
+                .orElseThrow(() -> new ProgressionNotFoundException("Projet introuvable dans votre structure"));
+
+            Optional<Progression> progressionExistante = progressionRepository
+                .findLockedByProjetIdAndParcoursId(projetId, parcours.getId());
+            if (progressionExistante.isPresent()) {
+                return progressionExistante.get();
+            }
+
+            Phase phaseInitiale = projetVerrouille.getCohorte() != null
+                ? projetVerrouille.getCohorte().getPhase()
+                : null;
+            if (phaseInitiale == null || !parcoursPhaseRepository.existsByParcours_IdAndPhase_Id(
+                parcours.getId(), phaseInitiale.getId())) {
+                return null;
+            }
+
+            Etape etapeInitiale = etapeRepository.findAllByPhaseIdOrderByOrdreAsc(phaseInitiale.getId()).stream()
+                .filter(etape -> !etape.isArchive())
+                .filter(etape -> etape.getStructure() != null && structureId.equals(etape.getStructure().getId()))
+                .findFirst()
+                .orElse(null);
+
+            Progression progression = new Progression();
+            progression.setProjet(projetVerrouille);
+            progression.setParcours(parcours);
+            progression.setPhase(phaseInitiale);
+            progression.setEtape(etapeInitiale);
+            progression.setStatut(StatutProgression.EN_COURS);
+            progression.setPourcentageAvancement(0);
+            Progression saved = progressionRepository.save(progression);
+
+            HistoriqueProgression historique = new HistoriqueProgression();
+            historique.setProgression(saved);
+            historique.setEtapeEntree(etapeInitiale);
+            historique.setPhaseEntree(phaseInitiale);
+            historique.setTypeChangement(TypeChangement.MANUEL);
+            historiqueProgressionRepository.save(historique);
+            return saved;
+            }
 
         private FeuilleRouteProjetDTO.EtapeDTO mapRoadmapStep(
             Etape step,

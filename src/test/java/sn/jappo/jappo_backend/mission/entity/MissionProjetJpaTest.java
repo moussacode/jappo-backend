@@ -51,6 +51,7 @@ import sn.jappo.jappo_backend.progression.repository.ProgressionRepository;
 import sn.jappo.jappo_backend.projet.entity.Projet;
 import sn.jappo.jappo_backend.projet.entity.StatutProjet;
 import sn.jappo.jappo_backend.projet.dto.PromouvoirProjetRequest;
+import sn.jappo.jappo_backend.projet.exception.PromotionBloqueeException;
 import sn.jappo.jappo_backend.projet.repository.ProjetRepository;
 import sn.jappo.jappo_backend.projet.service.SuiviProjetService;
 import sn.jappo.jappo_backend.structure.entity.StatutStructure;
@@ -262,10 +263,21 @@ class MissionProjetJpaTest {
         Cohorte cohorteCible = createCohorteForPhase(structure, parcours, phaseCible, "Cohorte cible");
         lierPhaseAuParcours(parcours, phaseInitiale, 1);
         lierPhaseAuParcours(parcours, phaseCible, 2);
+        Etape etapeInitiale = createEtapeForPhase(structure, phaseInitiale);
+        Etape etapeCible = createEtapeForPhase(structure, phaseCible);
 
         Projet projet = createProjet(structure);
         projet.setCohorte(cohorteInitiale);
         projetRepository.save(projet);
+
+        Progression progression = new Progression();
+        progression.setProjet(projet);
+        progression.setParcours(parcours);
+        progression.setPhase(phaseInitiale);
+        progression.setEtape(etapeInitiale);
+        progression.setStatut(Progression.StatutProgression.EN_COURS);
+        progression = progressionRepository.save(progression);
+        UUID progressionId = progression.getId();
 
         MissionCohorte missionCible = new MissionCohorte();
         missionCible.setTitre("Mission cible");
@@ -286,6 +298,53 @@ class MissionProjetJpaTest {
             assertEquals(1, missionProjetRepository
                     .findAllByMissionCohorteIdAndStructureId(missionCible.getId(), structure.getId())
                     .size());
+                Progression progressionApresPromotion = progressionRepository.findById(progressionId).orElseThrow();
+                assertEquals(phaseCible.getId(), progressionApresPromotion.getPhase().getId());
+                assertEquals(etapeCible.getId(), progressionApresPromotion.getEtape().getId());
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void promotion_isBlockedWhileRequiredStepMissionIsNotValidated() {
+        Structure structure = createStructure();
+        Parcours parcours = new Parcours();
+        parcours.setNom("Parcours promotion bloquée");
+        parcours.setStructure(structure);
+        parcoursRepository.save(parcours);
+
+        Phase phaseActuelle = createPhase(structure, "Phase actuelle");
+        Phase phaseSuivante = createPhase(structure, "Phase suivante");
+        Cohorte cohorteActuelle = createCohorteForPhase(structure, parcours, phaseActuelle, "Cohorte actuelle");
+        Cohorte cohorteSuivante = createCohorteForPhase(structure, parcours, phaseSuivante, "Cohorte suivante");
+        lierPhaseAuParcours(parcours, phaseActuelle, 1);
+        lierPhaseAuParcours(parcours, phaseSuivante, 2);
+
+        Etape etape = createEtapeForPhase(structure, phaseActuelle);
+        MissionEtape missionEtape = createMissionEtape(structure, etape);
+        Projet projet = createProjet(structure);
+        projet.setCohorte(cohorteActuelle);
+        projetRepository.save(projet);
+
+        MissionProjet missionProjet = new MissionProjet();
+        missionProjet.setMissionEtape(missionEtape);
+        missionProjet.setProjet(projet);
+        missionProjet.setStructure(structure);
+        missionProjet.setStatut(StatutMission.A_FAIRE);
+        missionProjetRepository.save(missionProjet);
+
+        TenantContext.setCurrentTenant(structure.getId());
+        try {
+            PromotionBloqueeException exception = assertThrows(
+                    PromotionBloqueeException.class,
+                    () -> participationService.promouvoir(
+                            projet.getId(),
+                            new PromouvoirProjetRequest(cohorteSuivante.getId(), null, false),
+                            null));
+
+            assertEquals("Mission d'étape", exception.getMissionsNonValidees().get(0).titre());
+            assertEquals("A_FAIRE", exception.getMissionsNonValidees().get(0).statut());
         } finally {
             TenantContext.clear();
         }
@@ -673,9 +732,12 @@ class MissionProjetJpaTest {
         try {
             var route = progressionService.getFeuilleRouteProjet(projet.getId());
 
+                assertNotNull(route.progressionId());
+                assertEquals(Progression.StatutProgression.EN_COURS.name(), route.statutProgression());
             assertEquals(List.of(firstPhase.getId(), futurePhase.getId()),
                     route.phases().stream().map(phase -> phase.id()).toList());
-            assertEquals("ACCESSIBLE", route.phases().get(0).etapes().get(0).statut());
+                assertEquals("EN_COURS", route.phases().get(0).statut());
+                assertEquals("ACTIVE", route.phases().get(0).etapes().get(0).statut());
             assertEquals("VERROUILLEE", route.phases().get(1).statut());
             assertEquals("VERROUILLEE", route.phases().get(1).etapes().get(0).statut());
             assertTrue(route.phases().stream().flatMap(phase -> phase.etapes().stream())
@@ -687,6 +749,10 @@ class MissionProjetJpaTest {
             assertEquals(1, mission.livrablesDeposes().size());
             assertEquals("BMV v1", mission.livrablesDeposes().get(0).nom());
             assertEquals("EN_ATTENTE", mission.livrablesDeposes().get(0).statut());
+
+            var routeReloaded = progressionService.getFeuilleRouteProjet(projet.getId());
+            assertEquals(route.progressionId(), routeReloaded.progressionId());
+            assertEquals(1, progressionRepository.findAllByProjetId(projet.getId()).size());
         } finally {
             TenantContext.clear();
         }
