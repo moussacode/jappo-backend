@@ -4,7 +4,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import sn.jappo.jappo_backend.mission.entity.MissionProjet;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
 
@@ -13,6 +17,13 @@ public interface MissionProjetRepository extends JpaRepository<MissionProjet, UU
     List<MissionProjet> findAllByProjetIdAndStructureId(UUID projetId, UUID structureId);
     List<MissionProjet> findAllByMissionCohorteIdAndStructureId(UUID missionCohorteId, UUID structureId);
     Optional<MissionProjet> findByIdAndStructureId(UUID id, UUID structureId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select mp from MissionProjet mp where mp.id = :id and mp.structure.id = :structureId")
+    Optional<MissionProjet> findLockedByIdAndStructureId(
+            @Param("id") UUID id,
+            @Param("structureId") UUID structureId
+    );
 
     // Vérifier l'existence d'une MissionProjet pour un couple (missionCohorte, projet)
     boolean existsByMissionCohorteIdAndProjetIdAndStructureId(UUID missionCohorteId, UUID projetId, UUID structureId);

@@ -1,7 +1,9 @@
 package sn.jappo.jappo_backend.mission.service;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -11,6 +13,8 @@ import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import sn.jappo.jappo_backend.livrable.entity.TypeLivrable;
 import sn.jappo.jappo_backend.mission.dto.CreateLivrableAttenduRequest;
 import sn.jappo.jappo_backend.mission.dto.LivrableAttenduResponse;
+import sn.jappo.jappo_backend.mission.dto.TemplateField;
+import sn.jappo.jappo_backend.mission.dto.TemplateFieldCodec;
 import sn.jappo.jappo_backend.mission.dto.UpdateLivrableAttenduRequest;
 import sn.jappo.jappo_backend.mission.entity.LivrableAttendu;
 import sn.jappo.jappo_backend.mission.entity.MissionEtape;
@@ -70,6 +74,8 @@ public class LivrableAttenduService {
         validateOrdre(ordre);
 
         String templateType = normalizeTemplateType(request.templateType(), type);
+        List<TemplateField> templateFields = normalizeTemplateFields(
+                request.templateFields(), type, templateType);
 
         LivrableAttendu livrableAttendu = new LivrableAttendu();
         livrableAttendu.setTitre(request.titre().trim());
@@ -78,6 +84,7 @@ public class LivrableAttenduService {
         livrableAttendu.setObligatoire(request.obligatoire() != null ? request.obligatoire() : true);
         livrableAttendu.setType(type);
         livrableAttendu.setTemplateType(templateType);
+        livrableAttendu.setTemplateConfiguration(TemplateFieldCodec.encode(templateFields));
         missionEtape.addLivrableAttendu(livrableAttendu);
 
         return mapToResponse(livrableAttenduRepository.save(livrableAttendu));
@@ -99,6 +106,9 @@ public class LivrableAttenduService {
         if (livrableAttendu.getMissionEtape() == null || !missionEtape.getId().equals(livrableAttendu.getMissionEtape().getId())) {
             throw new IllegalArgumentException("Ce livrable attendu n'appartient pas à cette mission");
         }
+
+        TypeLivrable ancienType = livrableAttendu.getType();
+        String ancienTemplateType = livrableAttendu.getTemplateType();
 
         if (request.titre() != null) {
             validateTitre(request.titre());
@@ -122,12 +132,20 @@ public class LivrableAttenduService {
             livrableAttendu.setType(request.type());
         }
 
-        if (request.templateType() != null || livrableAttendu.getType() == TypeLivrable.TEMPLATE) {
+        if (request.templateType() != null) {
             livrableAttendu.setTemplateType(normalizeTemplateType(request.templateType(), livrableAttendu.getType()));
         }
 
         if (livrableAttendu.getType() != TypeLivrable.TEMPLATE) {
             livrableAttendu.setTemplateType(null);
+            livrableAttendu.setTemplateConfiguration(null);
+        } else if (request.templateFields() != null) {
+            List<TemplateField> templateFields = normalizeTemplateFields(
+                    request.templateFields(), livrableAttendu.getType(), livrableAttendu.getTemplateType());
+            livrableAttendu.setTemplateConfiguration(TemplateFieldCodec.encode(templateFields));
+        } else if (ancienType != livrableAttendu.getType()
+                || !java.util.Objects.equals(ancienTemplateType, livrableAttendu.getTemplateType())) {
+            livrableAttendu.setTemplateConfiguration(null);
         }
 
         return mapToResponse(livrableAttenduRepository.save(livrableAttendu));
@@ -185,7 +203,47 @@ public class LivrableAttenduService {
         if (templateType == null || templateType.isBlank()) {
             return null;
         }
-        return templateType.trim();
+        String normalized = templateType.trim();
+        return normalized.equalsIgnoreCase("BMC") ? "BMC" : normalized;
+    }
+
+    private List<TemplateField> normalizeTemplateFields(
+            List<TemplateField> fields,
+            TypeLivrable type,
+            String templateType
+    ) {
+        if (fields == null) {
+            return List.of();
+        }
+        if (type != TypeLivrable.TEMPLATE || templateType == null) {
+            throw new IllegalArgumentException("Les champs ne peuvent être configurés que pour un template nommé.");
+        }
+        if (fields.isEmpty()) {
+            if (templateType.equalsIgnoreCase("BMC")) {
+                throw new IllegalArgumentException("Le template BMC doit contenir au moins une rubrique.");
+            }
+            return List.of();
+        }
+        if (!templateType.equalsIgnoreCase("BMC")) {
+            throw new IllegalArgumentException("La configuration interactive disponible actuellement est le template BMC.");
+        }
+        if (fields.size() > 40) {
+            throw new IllegalArgumentException("Un template ne peut pas contenir plus de 40 champs.");
+        }
+
+        Set<String> ids = new HashSet<>();
+        for (TemplateField field : fields) {
+            if (field == null || field.id() == null || field.id().isBlank()
+                    || field.id().trim().length() > 80
+                    || field.label() == null || field.label().isBlank()
+                    || field.label().trim().length() > 120
+                    || !ids.add(field.id().trim())) {
+                throw new IllegalArgumentException("Chaque champ du template doit avoir un identifiant unique et un libellé de 1 à 120 caractères.");
+            }
+        }
+        return fields.stream()
+                .map(field -> new TemplateField(field.id().trim(), field.label().trim()))
+                .toList();
     }
 
     private LivrableAttenduResponse mapToResponse(LivrableAttendu livrableAttendu) {
@@ -205,6 +263,7 @@ public class LivrableAttenduService {
                 livrableAttendu.isObligatoire(),
                 livrableAttendu.getType(),
                 livrableAttendu.getTemplateType(),
+                TemplateFieldCodec.decode(livrableAttendu.getTemplateConfiguration()),
                 missionEtapeId,
                 etapeId,
                 structureId,

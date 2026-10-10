@@ -1,0 +1,2 @@
+ALTER TABLE livrables_attendus
+    MODIFY COLUMN type ENUM('FICHIER', 'LIEN', 'TEXTE', 'TEMPLATE') NOT NULL;

@@ -8,6 +8,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,6 +25,7 @@ import sn.jappo.jappo_backend.mission.dto.MissionCohorteResponse;
 import sn.jappo.jappo_backend.mission.dto.UpdateStatutMissionRequest;
 import sn.jappo.jappo_backend.mission.service.MissionService;
 import sn.jappo.jappo_backend.mission.service.MissionEtapeService;
+import sn.jappo.jappo_backend.user.entity.User;
 
 @RestController
 @RequestMapping("/api/missions")
@@ -40,6 +43,7 @@ public class MissionController {
      * Créer une nouvelle mission (diffusée sur toute une cohorte ou ciblée par projet)
      */
     @PostMapping
+    @PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
     public ResponseEntity<List<MissionResponse>> createMission(@Valid @RequestBody CreateMissionRequest request) {
         List<MissionResponse> response = missionService.createMission(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -49,6 +53,7 @@ public class MissionController {
      * Récupérer toutes les missions de la structure active
      */
     @GetMapping
+    @PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
     public ResponseEntity<List<MissionResponse>> getMyMissions() {
         return ResponseEntity.ok(missionService.getMissionsForActiveStructure());
     }
@@ -58,6 +63,7 @@ public class MissionController {
      * Endpoint corrigé pour l'UX des missions de cohorte (P0).
      */
     @GetMapping("/agregees")
+    @PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
     public ResponseEntity<List<MissionCohorteResponse>> getMissionsCohorteAgregees() {
         return ResponseEntity.ok(missionService.getMissionsCohorteAgregees());
     }
@@ -66,16 +72,26 @@ public class MissionController {
      * Récupérer une mission spécifique par son ID
      */
     @GetMapping("/{id}")
-    public ResponseEntity<MissionResponse> getMissionById(@PathVariable UUID id) {
-        return ResponseEntity.ok(missionService.getMissionById(id));
+    @PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH', 'ENTREPRENEUR')")
+    public ResponseEntity<MissionResponse> getMissionById(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User user,
+            Authentication authentication
+    ) {
+        return ResponseEntity.ok(missionService.getMissionById(id, user, estGestionnaire(authentication)));
     }
 
     /**
      * Récupérer toutes les missions associées à un projet spécifique
      */
     @GetMapping("/projet/{projetId}")
-    public ResponseEntity<List<MissionResponse>> getMissionsByProjet(@PathVariable UUID projetId) {
-        return ResponseEntity.ok(missionService.getMissionsByProjet(projetId));
+    @PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH', 'ENTREPRENEUR')")
+    public ResponseEntity<List<MissionResponse>> getMissionsByProjet(
+            @PathVariable UUID projetId,
+            @AuthenticationPrincipal User user,
+            Authentication authentication
+    ) {
+        return ResponseEntity.ok(missionService.getMissionsByProjet(projetId, user, estGestionnaire(authentication)));
     }
 
     @PostMapping("/projet/{projetId}/resynchroniser")
@@ -89,6 +105,7 @@ public class MissionController {
      * Mettre à jour le statut d'une mission (ex: passage à VALIDEE, EN_REVUE, A_CORRIGER)
      */
     @PatchMapping("/{id}/statut")
+    @PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
     public ResponseEntity<MissionResponse> updateStatut(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateStatutMissionRequest request
@@ -98,12 +115,14 @@ public class MissionController {
 
 
     @PatchMapping("/{id}/details")
+    @PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
 public ResponseEntity<MissionResponse> updateMissionDetails(
         @PathVariable UUID id, @RequestBody UpdateMissionRequest request) {
     return ResponseEntity.ok(missionService.updateMissionDetails(id, request));
 }
 
 @DeleteMapping("/{id}")
+@PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
 public ResponseEntity<Void> deleteMission(@PathVariable UUID id) {
     missionService.deleteMission(id);
     return ResponseEntity.noContent().build();
@@ -114,6 +133,7 @@ public ResponseEntity<Void> deleteMission(@PathVariable UUID id) {
  * Idempotent : peut être appelé plusieurs fois sans erreur.
  */
 @PatchMapping("/{id}/archiver")
+@PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
 public ResponseEntity<Void> archiverMissionCohorte(@PathVariable UUID id) {
     missionService.archiverMissionCohorte(id);
     return ResponseEntity.noContent().build();
@@ -124,6 +144,7 @@ public ResponseEntity<Void> archiverMissionCohorte(@PathVariable UUID id) {
  * GET /api/missions/{id}/suivis
  */
 @GetMapping("/{id}/suivis")
+@PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
 public ResponseEntity<List<MissionResponse>> getSuivisIndividuels(@PathVariable UUID id) {
     return ResponseEntity.ok(missionService.getSuivisIndividuels(id));
 }
@@ -133,6 +154,7 @@ public ResponseEntity<List<MissionResponse>> getSuivisIndividuels(@PathVariable 
  * Idempotent : peut être appelé plusieurs fois sans erreur.
  */
 @PatchMapping("/projet/{id}/archiver")
+@PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
 public ResponseEntity<Void> archiverMissionProjet(@PathVariable UUID id) {
     missionService.archiverMissionProjet(id);
     return ResponseEntity.noContent().build();
@@ -143,6 +165,7 @@ public ResponseEntity<Void> archiverMissionProjet(@PathVariable UUID id) {
  * Idempotent : peut être appelé plusieurs fois sans erreur.
  */
 @PatchMapping("/{id}/restaurer")
+@PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
 public ResponseEntity<Void> restaurerMissionCohorte(@PathVariable UUID id) {
     missionService.restaurerMissionCohorte(id);
     return ResponseEntity.noContent().build();
@@ -153,9 +176,16 @@ public ResponseEntity<Void> restaurerMissionCohorte(@PathVariable UUID id) {
  * Idempotent : peut être appelé plusieurs fois sans erreur.
  */
 @PatchMapping("/projet/{id}/restaurer")
+@PreAuthorize("hasAnyAuthority('ADMIN_STRUCTURE', 'COACH')")
 public ResponseEntity<Void> restaurerMissionProjet(@PathVariable UUID id) {
     missionService.restaurerMissionProjet(id);
     return ResponseEntity.noContent().build();
+}
+
+private boolean estGestionnaire(Authentication authentication) {
+    return authentication != null && authentication.getAuthorities().stream()
+        .anyMatch(authority -> authority.getAuthority().equals("ADMIN_STRUCTURE")
+            || authority.getAuthority().equals("COACH"));
 }
 
 }

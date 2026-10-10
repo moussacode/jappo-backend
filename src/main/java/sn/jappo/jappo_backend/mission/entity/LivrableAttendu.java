@@ -56,6 +56,9 @@ public class LivrableAttendu {
     @Column(length = 80)
     private String templateType;
 
+    @Column(name = "template_configuration", columnDefinition = "TEXT")
+    private String templateConfiguration;
+
     @Column(nullable = false)
     private boolean obligatoire = true;
 

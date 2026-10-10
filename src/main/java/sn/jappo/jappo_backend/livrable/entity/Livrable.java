@@ -23,6 +23,7 @@ import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
+import sn.jappo.jappo_backend.mission.entity.LivrableAttendu;
 import sn.jappo.jappo_backend.mission.entity.MissionProjet;
 import sn.jappo.jappo_backend.projet.entity.Projet;
 import sn.jappo.jappo_backend.structure.entity.Structure;
@@ -42,6 +43,9 @@ public class Livrable {
 
     @Column(nullable = false, length = 1000)
     private String url;
+
+    @Column(columnDefinition = "MEDIUMTEXT")
+    private String contenu;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -88,6 +92,22 @@ public class Livrable {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "structure_id", nullable = false)
     private Structure structure;
+
+    /**
+     * Livrable attendu auquel cette remise répond (nullable pour rétrocompatibilité).
+     * <p>
+     * Quand renseigné, permet de distinguer précisément quel attendu a été couvert
+     * et dans quel type de format (FICHIER, LIEN, TEXTE).
+     * <p>
+     * En production (ddl-auto=update), Hibernate ajoute automatiquement la colonne
+     * {@code livrable_attendu_id} nullable. Aucune migration Flyway n'est requise.
+     * <p>
+     * Ne jamais positionner ce champ sans vérifier que le LivrableAttendu appartient
+     * bien à la même MissionProjet (via missionEtape ou missionCohorte).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "livrable_attendu_id")
+    private LivrableAttendu livrableAttendu;
 
     @OneToMany(mappedBy = "livrable", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("numeroVersion DESC")

@@ -12,6 +12,7 @@ public record LivrableResponse(
         UUID id,
         String nom,
         String url,
+        String contenu,
         TypeLivrable typePiece,
         StatutLivrable statut,
         Integer numeroVersion,
@@ -29,7 +30,12 @@ public record LivrableResponse(
         UUID projetId,
         String nomProjet,
         UUID structureId,
-        List<LivrableVersionResponse> historique
+        List<LivrableVersionResponse> historique,
+        /**
+         * UUID du LivrableAttendu auquel cette remise répond.
+         * Null pour les livrables créés avant l'introduction de ce champ.
+         */
+        UUID livrableAttenduId
 ) {
     // Constructeur de rétrocompatibilité sans historique/champs de révision
     public LivrableResponse(
@@ -51,6 +57,7 @@ public record LivrableResponse(
                 id,
                 nom,
                 url,
+                null,
                 typePiece,
                 statut,
                 1,
@@ -68,7 +75,8 @@ public record LivrableResponse(
                 projetId,
                 nomProjet,
                 structureId,
-                List.of()
+                List.of(),
+                null
         );
     }
 }

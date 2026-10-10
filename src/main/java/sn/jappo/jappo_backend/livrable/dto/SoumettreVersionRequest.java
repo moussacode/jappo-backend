@@ -6,5 +6,15 @@ public record SoumettreVersionRequest(
         String nom,
         String url,
         TypeLivrable typePiece,
-        String commentaireEntrepreneur
-) {}
+        String commentaireEntrepreneur,
+        String contenu
+) {
+    public SoumettreVersionRequest(
+            String nom,
+            String url,
+            TypeLivrable typePiece,
+            String commentaireEntrepreneur
+    ) {
+        this(nom, url, typePiece, commentaireEntrepreneur, null);
+    }
+}

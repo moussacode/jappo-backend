@@ -27,7 +27,9 @@ import sn.jappo.jappo_backend.mission.dto.CreateMissionRequest;
 import sn.jappo.jappo_backend.mission.dto.CreateMissionEtapeRequest;
 import sn.jappo.jappo_backend.mission.dto.UpdateMissionRequest;
 import sn.jappo.jappo_backend.livrable.entity.Livrable;
+import sn.jappo.jappo_backend.livrable.entity.LivrableVersion;
 import sn.jappo.jappo_backend.livrable.entity.StatutLivrable;
+import sn.jappo.jappo_backend.livrable.entity.TypeLivrable;
 import sn.jappo.jappo_backend.livrable.repository.LivrableRepository;
 import sn.jappo.jappo_backend.mission.repository.LivrableAttenduRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionCohorteRepository;
@@ -44,8 +46,11 @@ import sn.jappo.jappo_backend.parcours.repository.ParcoursPhaseRepository;
 import sn.jappo.jappo_backend.parcours.repository.ParcoursRepository;
 import sn.jappo.jappo_backend.parcours.repository.PhaseRepository;
 import sn.jappo.jappo_backend.progression.service.ProgressionService;
+import sn.jappo.jappo_backend.progression.entity.Progression;
+import sn.jappo.jappo_backend.progression.repository.ProgressionRepository;
 import sn.jappo.jappo_backend.projet.entity.Projet;
 import sn.jappo.jappo_backend.projet.entity.StatutProjet;
+import sn.jappo.jappo_backend.projet.dto.PromouvoirProjetRequest;
 import sn.jappo.jappo_backend.projet.repository.ProjetRepository;
 import sn.jappo.jappo_backend.projet.service.SuiviProjetService;
 import sn.jappo.jappo_backend.structure.entity.StatutStructure;
@@ -71,6 +76,9 @@ class MissionProjetJpaTest {
 
     @Autowired
     private ProgressionService progressionService;
+
+    @Autowired
+    private ProgressionRepository progressionRepository;
 
     @Autowired
     private MissionEtapeService missionEtapeService;
@@ -185,6 +193,7 @@ class MissionProjetJpaTest {
                     null,
                     null,
                     missionEtape.getId(),
+                    null, // etapeParcoursId
                     null
             ));
         } finally {
@@ -199,6 +208,133 @@ class MissionProjetJpaTest {
 
         assertNotNull(created.getMissionEtape());
         assertNull(created.getMissionCohorte());
+    }
+
+    @Test
+    void createMission_withEtapeParcoursId_persistsMissionCohorteStepLink() {
+        Structure structure = createStructure();
+        Cohorte cohorte = createCohorte(structure);
+        Projet projet = createProjet(structure);
+        Etape etape = createEtapeForPhase(structure, cohorte.getPhase());
+
+        TenantContext.setCurrentTenant(structure.getId());
+        try {
+            List<sn.jappo.jappo_backend.mission.dto.MissionResponse> responses = missionService.createMission(
+                    new CreateMissionRequest(
+                            "Mission liée à une étape",
+                            "Description",
+                            null,
+                            PrioriteMission.MOYENNE,
+                            cohorte.getId(),
+                            projet.getId(),
+                            null,
+                            null,
+                            null,
+                            etape.getId(),
+                            null
+                    ));
+
+            assertEquals(1, responses.size());
+            MissionProjet created = missionProjetRepository
+                    .findAllByProjetIdAndStructureId(projet.getId(), structure.getId())
+                    .stream()
+                    .filter(mission -> mission.getMissionCohorte() != null)
+                    .findFirst()
+                    .orElseThrow();
+            assertEquals(etape.getId(), created.getMissionCohorte().getEtape().getId());
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void promotion_synchronizesCohortMissionsWithoutDuplicates() {
+        Structure structure = createStructure();
+
+        Parcours parcours = new Parcours();
+        parcours.setNom("Parcours de promotion");
+        parcours.setStructure(structure);
+        parcoursRepository.save(parcours);
+
+        Phase phaseInitiale = createPhase(structure, "Phase initiale");
+        Phase phaseCible = createPhase(structure, "Phase cible");
+        Cohorte cohorteInitiale = createCohorteForPhase(structure, parcours, phaseInitiale, "Cohorte initiale");
+        Cohorte cohorteCible = createCohorteForPhase(structure, parcours, phaseCible, "Cohorte cible");
+        lierPhaseAuParcours(parcours, phaseInitiale, 1);
+        lierPhaseAuParcours(parcours, phaseCible, 2);
+
+        Projet projet = createProjet(structure);
+        projet.setCohorte(cohorteInitiale);
+        projetRepository.save(projet);
+
+        MissionCohorte missionCible = new MissionCohorte();
+        missionCible.setTitre("Mission cible");
+        missionCible.setStructure(structure);
+        missionCible.setCohorte(cohorteCible);
+        missionCohorteRepository.save(missionCible);
+
+        TenantContext.setCurrentTenant(structure.getId());
+        try {
+            participationService.ouvrirParticipation(projet, cohorteInitiale, null);
+            participationService.assignerMissionsCohorteAuProjet(projet, cohorteCible);
+
+            participationService.promouvoir(
+                    projet.getId(),
+                    new PromouvoirProjetRequest(cohorteCible.getId(), null, false),
+                    null);
+
+            assertEquals(1, missionProjetRepository
+                    .findAllByMissionCohorteIdAndStructureId(missionCible.getId(), structure.getId())
+                    .size());
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void livrableAttenduSubmissionVersion_preservesTheFullRelationChain() {
+        Structure structure = createStructure();
+        Cohorte cohorte = createCohorte(structure);
+        Projet projet = createProjet(structure);
+        MissionCohorte missionCohorte = new MissionCohorte();
+        missionCohorte.setTitre("Mission de remise");
+        missionCohorte.setStructure(structure);
+        missionCohorte.setCohorte(cohorte);
+        missionCohorte = missionCohorteRepository.save(missionCohorte);
+
+        MissionProjet missionProjet = new MissionProjet();
+        missionProjet.setMissionCohorte(missionCohorte);
+        missionProjet.setProjet(projet);
+        missionProjet.setStructure(structure);
+        missionProjet = missionProjetRepository.save(missionProjet);
+
+        LivrableAttendu attendu = new LivrableAttendu();
+        attendu.setTitre("Présentation");
+        attendu.setType(TypeLivrable.FICHIER);
+        attendu.setMissionCohorte(missionCohorte);
+        attendu = livrableAttenduRepository.save(attendu);
+
+        Livrable livrable = new Livrable();
+        livrable.setNom("Présentation remise");
+        livrable.setUrl("https://files.test/presentation.pdf");
+        livrable.setTypePiece(TypeLivrable.FICHIER);
+        livrable.setMissionProjet(missionProjet);
+        livrable.setProjet(projet);
+        livrable.setStructure(structure);
+        livrable.setLivrableAttendu(attendu);
+        LivrableVersion version = new LivrableVersion();
+        version.setNumeroVersion(1);
+        version.setNom(livrable.getNom());
+        version.setUrl(livrable.getUrl());
+        version.setTypePiece(livrable.getTypePiece());
+        livrable.addVersion(version);
+        Livrable savedLivrable = livrableRepository.saveAndFlush(livrable);
+        entityManager.clear();
+
+        Livrable reloaded = livrableRepository.findById(savedLivrable.getId()).orElseThrow();
+        assertEquals(attendu.getId(), reloaded.getLivrableAttendu().getId());
+        assertEquals(1, reloaded.getVersions().size());
+        assertEquals(reloaded.getId(), reloaded.getVersions().get(0).getLivrable().getId());
     }
 
     @Test
@@ -219,6 +355,7 @@ class MissionProjetJpaTest {
                     null,
                     null,
                     null,
+                    null, // etapeParcoursId
                     null
             ));
         } finally {
@@ -556,6 +693,53 @@ class MissionProjetJpaTest {
     }
 
     @Test
+    void validationStep_isPersistedAndVisibleAfterRouteReload() {
+        Structure structure = createStructure();
+        Cohorte cohorte = createCohorte(structure);
+        Etape firstStep = createEtapeForPhase(structure, cohorte.getPhase());
+        Etape nextStep = createEtapeForPhase(structure, cohorte.getPhase());
+        nextStep.setOrdre(2);
+        etapeRepository.save(nextStep);
+        Phase futurePhase = createPhase(structure, "Phase future");
+        ParcoursPhase futureAssociation = new ParcoursPhase();
+        futureAssociation.setParcours(cohorte.getParcours());
+        futureAssociation.setPhase(futurePhase);
+        futureAssociation.setOrdre(2);
+        parcoursPhaseRepository.save(futureAssociation);
+        createEtapeForPhase(structure, futurePhase);
+
+        Projet projet = createProjet(structure);
+        projet.setCohorte(cohorte);
+        projetRepository.save(projet);
+        Progression progression = new Progression();
+        progression.setProjet(projet);
+        progression.setParcours(cohorte.getParcours());
+        progression.setPhase(cohorte.getPhase());
+        progression.setEtape(firstStep);
+        progression.setStatut(Progression.StatutProgression.EN_COURS);
+        progression.setPourcentageAvancement(0);
+        progression = progressionRepository.save(progression);
+        UUID progressionId = progression.getId();
+        UUID projetId = projet.getId();
+
+        TenantContext.setCurrentTenant(structure.getId());
+        try {
+            progressionService.validerEtape(progressionId, null);
+            entityManager.flush();
+            entityManager.clear();
+
+            var route = progressionService.getFeuilleRouteProjet(projetId);
+            var firstPhase = route.phases().get(0);
+            assertEquals(33, route.pourcentageAvancement());
+            assertEquals("VALIDEE", firstPhase.etapes().get(0).statut());
+            assertEquals("ACTIVE", firstPhase.etapes().get(1).statut());
+            assertEquals("VERROUILLEE", route.phases().get(1).statut());
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
     void createMissionEtape_excludesProjectsOutsidePhase() {
         Structure structure = createStructure();
         Cohorte matchingCohorte = createCohorte(structure);
@@ -750,6 +934,24 @@ class MissionProjetJpaTest {
         phase.setNom(nom);
         phase.setStructure(structure);
         return phaseRepository.save(phase);
+    }
+
+    private Cohorte createCohorteForPhase(Structure structure, Parcours parcours, Phase phase, String nom) {
+        Cohorte cohorte = new Cohorte();
+        cohorte.setNom(nom);
+        cohorte.setStructure(structure);
+        cohorte.setParcours(parcours);
+        cohorte.setPhase(phase);
+        cohorte.setStatut(StatutCohorte.EN_COURS);
+        return cohorteRepository.save(cohorte);
+    }
+
+    private void lierPhaseAuParcours(Parcours parcours, Phase phase, int ordre) {
+        ParcoursPhase association = new ParcoursPhase();
+        association.setParcours(parcours);
+        association.setPhase(phase);
+        association.setOrdre(ordre);
+        parcoursPhaseRepository.save(association);
     }
 
     private Etape createEtapeForPhase(Structure structure, Phase phase) {

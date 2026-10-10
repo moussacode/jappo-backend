@@ -12,6 +12,7 @@ public record LivrableVersionResponse(
         Integer numeroVersion,
         String nom,
         String url,
+        String contenu,
         TypeLivrable typePiece,
         StatutLivrable statut,
         Float note,

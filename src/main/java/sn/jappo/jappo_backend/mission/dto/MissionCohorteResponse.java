@@ -27,6 +27,8 @@ public record MissionCohorteResponse(
         // Contexte cohorte
         UUID cohorteId,
         String nomCohorte,
+        UUID etapeId,
+        String nomEtape,
 
         // Structure & Audit
         UUID structureId,
@@ -36,6 +38,9 @@ public record MissionCohorteResponse(
         int nombreProjetsConcernes,
         int nombreValides,
         int nombreEnRevue,
+        int nombreSoumis,
+        int nombreACorriger,
+        int nombreNonSoumis,
         int nombreEnRetard,
         int nombreAFaire,
 

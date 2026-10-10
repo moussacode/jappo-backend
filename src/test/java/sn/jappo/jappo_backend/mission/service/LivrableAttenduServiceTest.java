@@ -17,6 +17,8 @@ import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import sn.jappo.jappo_backend.livrable.entity.TypeLivrable;
 import sn.jappo.jappo_backend.mission.dto.CreateLivrableAttenduRequest;
 import sn.jappo.jappo_backend.mission.dto.LivrableAttenduResponse;
+import sn.jappo.jappo_backend.mission.dto.TemplateField;
+import sn.jappo.jappo_backend.mission.dto.TemplateFieldCodec;
 import sn.jappo.jappo_backend.mission.dto.UpdateLivrableAttenduRequest;
 import sn.jappo.jappo_backend.mission.entity.LivrableAttendu;
 import sn.jappo.jappo_backend.mission.entity.MissionEtape;
@@ -144,6 +146,64 @@ class LivrableAttenduServiceTest {
         assertThat(response.type()).isEqualTo(TypeLivrable.TEMPLATE);
         assertThat(response.templateType()).isEqualTo("BMC");
         assertThat(response.obligatoire()).isTrue();
+    }
+
+    @Test
+    void createBmcLivrableAttendu_persistsEditableFields() {
+        List<TemplateField> fields = List.of(
+                new TemplateField("valueProposition", "Proposition de valeur"),
+                new TemplateField("customerSegments", "Segments clients")
+        );
+        CreateLivrableAttenduRequest request = new CreateLivrableAttenduRequest(
+                "Business Model Canvas",
+                "Complétez les rubriques.",
+                1,
+                true,
+                TypeLivrable.TEMPLATE,
+                "BMC",
+                fields
+        );
+
+        LivrableAttenduResponse response = livrableAttenduService.createLivrableAttendu(
+                missionEtape.getEtape().getId(),
+                missionEtape.getId(),
+                request
+        );
+
+        assertThat(response.templateFields()).containsExactlyElementsOf(fields);
+        LivrableAttendu persisted = livrableAttenduRepository.findById(response.id()).orElseThrow();
+        assertThat(TemplateFieldCodec.decode(persisted.getTemplateConfiguration())).containsExactlyElementsOf(fields);
+    }
+
+    @Test
+    void updateBmcTemplateType_clearsOldFieldsAndPartialUpdatePreservesConfiguration() {
+        TemplateField field = new TemplateField("valueProposition", "Proposition de valeur");
+        LivrableAttendu attendu = new LivrableAttendu();
+        attendu.setTitre("BMC");
+        attendu.setType(TypeLivrable.TEMPLATE);
+        attendu.setTemplateType("BMC");
+        attendu.setTemplateConfiguration(TemplateFieldCodec.encode(List.of(field)));
+        attendu.setOrdre(1);
+        attendu.setMissionEtape(missionEtape);
+        livrableAttenduRepository.save(attendu);
+
+        LivrableAttenduResponse unchanged = livrableAttenduService.updateLivrableAttendu(
+                missionEtape.getEtape().getId(),
+                missionEtape.getId(),
+                attendu.getId(),
+                new UpdateLivrableAttenduRequest(null, "Description modifiée", null, null, null, null)
+        );
+        assertThat(unchanged.templateFields()).containsExactly(field);
+
+        LivrableAttenduResponse changed = livrableAttenduService.updateLivrableAttendu(
+                missionEtape.getEtape().getId(),
+                missionEtape.getId(),
+                attendu.getId(),
+                new UpdateLivrableAttenduRequest(null, null, null, null, TypeLivrable.TEMPLATE, "BUSINESS_PLAN")
+        );
+
+        assertThat(changed.templateType()).isEqualTo("BUSINESS_PLAN");
+        assertThat(changed.templateFields()).isEmpty();
     }
 
     @Test

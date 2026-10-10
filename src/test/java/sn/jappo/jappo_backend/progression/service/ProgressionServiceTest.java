@@ -335,9 +335,39 @@ public class ProgressionServiceTest {
         TenantContext.clear();
     }
 
-    /**
-     * Cas 5 : Étape 1 non validée → Étape 2 verrouillée
-     */
+        /**
+         * Cas 4 : Étape 1 validée → Étape 2 accessible.
+         */
+        @Test
+        public void testIsEtapeAccessible_Etape1Validee_Etape2Accessible() {
+                setupCommonMocks();
+                Etape etape2 = new Etape();
+                etape2.setId(UUID.randomUUID());
+                etape2.setNom("Étape 2");
+                etape2.setOrdre(2);
+                etape2.setPhase(phase);
+                etape2.setStructure(structure);
+                phase.getEtapes().add(etape2);
+                when(etapeRepository.findAllByPhaseIdOrderByOrdreAsc(phaseId)).thenReturn(List.of(etape, etape2));
+
+                HistoriqueProgression historique = new HistoriqueProgression();
+                historique.setEtapeEntree(etape);
+                historique.setRaison("VALIDATION_COACH");
+                progression.getHistorique().add(historique);
+                when(progressionRepository.findById(progressionId)).thenReturn(Optional.of(progression));
+                when(etapeRepository.findByIdAndStructureId(etape2.getId(), structureId)).thenReturn(Optional.of(etape2));
+
+                TenantContext.setCurrentTenant(structureId);
+                try {
+                        assertTrue(progressionService.isEtapeAccessible(progressionId, etape2.getId()));
+                } finally {
+                        TenantContext.clear();
+                }
+        }
+
+        /**
+         * Cas 5 : Étape 1 non validée → Étape 2 verrouillée
+         */
     @Test
     public void testIsEtapeAccessible_Etape1NonValidee_Etape2Verrouillee() {
         setupCommonMocks();
@@ -349,6 +379,7 @@ public class ProgressionServiceTest {
         etape2.setPhase(phase);
         etape2.setStructure(structure);
         phase.getEtapes().add(etape2);
+        when(etapeRepository.findAllByPhaseIdOrderByOrdreAsc(phaseId)).thenReturn(List.of(etape, etape2));
 
         when(progressionRepository.findById(progressionId)).thenReturn(Optional.of(progression));
         when(etapeRepository.findByIdAndStructureId(etape2.getId(), structureId)).thenReturn(Optional.of(etape2));
@@ -361,6 +392,31 @@ public class ProgressionServiceTest {
 
         TenantContext.clear();
     }
+
+        @Test
+        public void testIsEtapeAccessible_PhaseFutureResteVerrouillee() {
+                setupCommonMocks();
+                Phase phaseFuture = new Phase();
+                phaseFuture.setId(UUID.randomUUID());
+                phaseFuture.setStructure(structure);
+                phaseFuture.setEtapes(new ArrayList<>());
+                Etape etapeFuture = new Etape();
+                etapeFuture.setId(UUID.randomUUID());
+                etapeFuture.setOrdre(1);
+                etapeFuture.setPhase(phaseFuture);
+                etapeFuture.setStructure(structure);
+
+                when(progressionRepository.findById(progressionId)).thenReturn(Optional.of(progression));
+                when(parcoursPhaseRepository.existsByParcours_IdAndPhase_Id(parcoursId, phaseFuture.getId())).thenReturn(true);
+                when(etapeRepository.findByIdAndStructureId(etapeFuture.getId(), structureId)).thenReturn(Optional.of(etapeFuture));
+
+                TenantContext.setCurrentTenant(structureId);
+                try {
+                        assertFalse(progressionService.isEtapeAccessible(progressionId, etapeFuture.getId()));
+                } finally {
+                        TenantContext.clear();
+                }
+        }
 
         @Test
         public void testValiderEtape_AttenduObligatoireSansDepot_Echoue() {

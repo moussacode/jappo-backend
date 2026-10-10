@@ -42,6 +42,9 @@ public class LivrableVersion {
     @Column(nullable = false, length = 1000)
     private String url;
 
+    @Column(columnDefinition = "MEDIUMTEXT")
+    private String contenu;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TypeLivrable typePiece = TypeLivrable.FICHIER;
