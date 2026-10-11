@@ -47,6 +47,7 @@ import sn.jappo.jappo_backend.parcours.repository.ParcoursRepository;
 import sn.jappo.jappo_backend.parcours.repository.PhaseRepository;
 import sn.jappo.jappo_backend.progression.service.ProgressionService;
 import sn.jappo.jappo_backend.progression.entity.Progression;
+import sn.jappo.jappo_backend.progression.exception.InvalidProgressionTransitionException;
 import sn.jappo.jappo_backend.progression.repository.ProgressionRepository;
 import sn.jappo.jappo_backend.projet.entity.Projet;
 import sn.jappo.jappo_backend.projet.entity.StatutProjet;
@@ -345,6 +346,65 @@ class MissionProjetJpaTest {
 
             assertEquals("Mission d'étape", exception.getMissionsNonValidees().get(0).titre());
             assertEquals("A_FAIRE", exception.getMissionsNonValidees().get(0).statut());
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void entrepreneurMissionList_hidesArchivedStepAndPhaseAssignments() {
+        Structure structure = createStructure();
+        Cohorte cohorte = createCohorte(structure);
+        Projet projet = createProjet(structure);
+        projet.setCohorte(cohorte);
+        projetRepository.save(projet);
+
+        Etape activeStep = createEtapeForPhase(structure, cohorte.getPhase());
+        Etape archivedStep = createEtapeForPhase(structure, cohorte.getPhase());
+        archivedStep.setArchive(true);
+        etapeRepository.save(archivedStep);
+
+        Phase archivedPhase = createPhase(structure, "Phase archivée");
+        archivedPhase.setArchive(true);
+        phaseRepository.save(archivedPhase);
+        Etape stepInArchivedPhase = createEtapeForPhase(structure, archivedPhase);
+
+        MissionEtape activeDefinition = createMissionEtape(structure, activeStep);
+        MissionEtape archivedStepDefinition = createMissionEtape(structure, archivedStep);
+        MissionEtape archivedPhaseDefinition = createMissionEtape(structure, stepInArchivedPhase);
+
+        saveMissionInstance(projet, structure, activeDefinition, false);
+        saveMissionInstance(projet, structure, archivedStepDefinition, false);
+        saveMissionInstance(projet, structure, archivedPhaseDefinition, false);
+        saveMissionInstance(projet, structure, activeDefinition, true);
+
+        TenantContext.setCurrentTenant(structure.getId());
+        try {
+            List<sn.jappo.jappo_backend.mission.dto.MissionResponse> missions =
+                    missionService.getMissionsActivesEntrepreneur(projet.getId());
+
+            assertEquals(1, missions.size());
+            assertEquals("Mission d'étape", missions.get(0).titre());
+            assertEquals(activeDefinition.getId(), missions.get(0).missionEtapeId());
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void forcedPromotion_requiresAReason() {
+        Structure structure = createStructure();
+        TenantContext.setCurrentTenant(structure.getId());
+        try {
+            ResponseStatusException exception = assertThrows(
+                    ResponseStatusException.class,
+                    () -> participationService.promouvoir(
+                            UUID.randomUUID(),
+                            new PromouvoirProjetRequest(UUID.randomUUID(), " ", true),
+                            null));
+
+            assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+            assertEquals("Une raison est obligatoire pour forcer une promotion", exception.getReason());
         } finally {
             TenantContext.clear();
         }
@@ -806,6 +866,53 @@ class MissionProjetJpaTest {
     }
 
     @Test
+    void validationStep_requiresEachRequiredExpectedDeliverableRatherThanMatchingCount() {
+        Structure structure = createStructure();
+        Cohorte cohorte = createCohorte(structure);
+        Etape etape = createEtapeForPhase(structure, cohorte.getPhase());
+        MissionEtape missionEtape = createMissionEtape(structure, etape);
+        Projet projet = createProjet(structure);
+        projet.setCohorte(cohorte);
+        projetRepository.save(projet);
+
+        Progression progression = new Progression();
+        progression.setProjet(projet);
+        progression.setParcours(cohorte.getParcours());
+        progression.setPhase(cohorte.getPhase());
+        progression.setEtape(etape);
+        progression.setStatut(Progression.StatutProgression.EN_COURS);
+        progressionRepository.save(progression);
+
+        MissionProjet missionProjet = new MissionProjet();
+        missionProjet.setMissionEtape(missionEtape);
+        missionProjet.setProjet(projet);
+        missionProjet.setStructure(structure);
+        missionProjet.setStatut(StatutMission.VALIDE);
+        missionProjet = missionProjetRepository.save(missionProjet);
+
+        LivrableAttendu requiredOne = createExpectedDeliverable(missionEtape, "Attendu obligatoire 1", true);
+        createExpectedDeliverable(missionEtape, "Attendu obligatoire 2", true);
+        LivrableAttendu optional = createExpectedDeliverable(missionEtape, "Attendu optionnel", false);
+        entityManager.flush();
+
+        createValidatedLivrable(missionProjet, projet, structure, requiredOne);
+        createValidatedLivrable(missionProjet, projet, structure, optional);
+
+        TenantContext.setCurrentTenant(structure.getId());
+        try {
+            InvalidProgressionTransitionException exception = assertThrows(
+                    InvalidProgressionTransitionException.class,
+                    () -> progressionService.validerEtape(progression.getId(), null));
+
+            assertEquals(
+                    "Impossible de valider l'étape : tous les livrables obligatoires ne sont pas validés",
+                    exception.getMessage());
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
     void createMissionEtape_excludesProjectsOutsidePhase() {
         Structure structure = createStructure();
         Cohorte matchingCohorte = createCohorte(structure);
@@ -1071,6 +1178,47 @@ class MissionProjetJpaTest {
         missionEtape.setStructure(structure);
         missionEtape.setEtape(etape);
         return missionEtapeRepository.save(missionEtape);
+    }
+
+    private MissionProjet saveMissionInstance(
+            Projet projet,
+            Structure structure,
+            MissionEtape definition,
+            boolean archive
+    ) {
+        MissionProjet mission = new MissionProjet();
+        mission.setMissionEtape(definition);
+        mission.setProjet(projet);
+        mission.setStructure(structure);
+        mission.setStatut(StatutMission.A_FAIRE);
+        mission.setArchive(archive);
+        return missionProjetRepository.save(mission);
+    }
+
+    private LivrableAttendu createExpectedDeliverable(MissionEtape missionEtape, String titre, boolean obligatoire) {
+        LivrableAttendu attendu = new LivrableAttendu();
+        attendu.setTitre(titre);
+        attendu.setOrdre(missionEtape.getLivrablesAttendus().size() + 1);
+        attendu.setObligatoire(obligatoire);
+        missionEtape.addLivrableAttendu(attendu);
+        return livrableAttenduRepository.save(attendu);
+    }
+
+    private void createValidatedLivrable(
+            MissionProjet missionProjet,
+            Projet projet,
+            Structure structure,
+            LivrableAttendu attendu
+    ) {
+        Livrable livrable = new Livrable();
+        livrable.setNom(attendu.getTitre());
+        livrable.setUrl("https://example.test/" + UUID.randomUUID());
+        livrable.setStatut(StatutLivrable.VALIDE);
+        livrable.setMissionProjet(missionProjet);
+        livrable.setProjet(projet);
+        livrable.setStructure(structure);
+        livrable.setLivrableAttendu(attendu);
+        livrableRepository.save(livrable);
     }
 
     private Projet createProjet(Structure structure) {

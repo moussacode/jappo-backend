@@ -145,6 +145,7 @@ class LivrableAttenduServiceTest {
         assertThat(response.titre()).isEqualTo("Business Model Canvas");
         assertThat(response.type()).isEqualTo(TypeLivrable.TEMPLATE);
         assertThat(response.templateType()).isEqualTo("BMC");
+        assertThat(response.templateFields()).hasSize(9);
         assertThat(response.obligatoire()).isTrue();
     }
 

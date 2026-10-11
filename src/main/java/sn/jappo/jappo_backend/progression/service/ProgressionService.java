@@ -205,6 +205,18 @@ public class ProgressionService {
         if (progression.getStatut() != StatutProgression.EN_COURS) {
             throw new InvalidProgressionTransitionException("Impossible d'avancer une progression qui n'est pas en cours");
         }
+
+        if (request.phaseId() != null && (progression.getPhase() == null
+            || !request.phaseId().equals(progression.getPhase().getId()))) {
+            throw new InvalidProgressionTransitionException(
+                "Le changement de phase doit se faire par promotion vers une cohorte de phase supérieure.");
+        }
+
+        if (request.etapeId() != null && (progression.getEtape() == null
+            || !request.etapeId().equals(progression.getEtape().getId()))) {
+            throw new InvalidProgressionTransitionException(
+                "Une étape ne peut être avancée qu'après sa validation explicite par un coach.");
+        }
         
         Phase phaseTarget = null;
         Etape etapeTarget = null;
@@ -927,18 +939,13 @@ public class ProgressionService {
             List<MissionProjet> missionsProjet = missionProjetRepository
                     .findByMissionEtapeIdAndProjetIdAndStructureId(missionEtape.getId(), progression.getProjet().getId(), structureId);
 
-            long attendusObligatoires = livrableAttenduRepository.findByMissionEtapeIdOrderByOrdreAsc(missionEtape.getId())
-                    .stream()
-                    .filter(LivrableAttendu::isObligatoire)
-                    .count();
+            List<LivrableAttendu> attendus = livrableAttenduRepository
+                    .findByMissionEtapeIdOrderByOrdreAsc(missionEtape.getId());
 
             for (MissionProjet mp : missionsProjet) {
                 List<Livrable> livrables = livrableRepository.findAllByMissionProjetIdAndStructureId(mp.getId(), structureId);
-                if (livrables.size() < attendusObligatoires) {
-                    return false;
-                }
-                boolean tousValides = livrables.stream().allMatch(l -> l.getStatut() == StatutLivrable.VALIDE);
-                if (!tousValides) {
+                if (livrables.stream().anyMatch(l -> l.getStatut() != StatutLivrable.VALIDE)
+                        || !couvreTousLesAttendusObligatoires(livrables, attendus)) {
                     return false;
                 }
             }
@@ -950,14 +957,12 @@ public class ProgressionService {
             if (instances.isEmpty()) {
                 return false;
             }
-            long attendusObligatoires = livrableAttenduRepository.findByMissionCohorteIdOrderByOrdreAsc(missionCohorte.getId())
-                    .stream()
-                    .filter(LivrableAttendu::isObligatoire)
-                    .count();
+                List<LivrableAttendu> attendus = livrableAttenduRepository
+                    .findByMissionCohorteIdOrderByOrdreAsc(missionCohorte.getId());
             for (MissionProjet instance : instances) {
                 List<Livrable> livrables = livrableRepository.findAllByMissionProjetIdAndStructureId(instance.getId(), structureId);
-                if (livrables.size() < attendusObligatoires
-                        || livrables.stream().anyMatch(livrable -> livrable.getStatut() != StatutLivrable.VALIDE)) {
+                if (livrables.stream().anyMatch(livrable -> livrable.getStatut() != StatutLivrable.VALIDE)
+                    || !couvreTousLesAttendusObligatoires(livrables, attendus)) {
                     return false;
                 }
             }
@@ -965,6 +970,39 @@ public class ProgressionService {
 
         return true;
     }
+
+        private boolean couvreTousLesAttendusObligatoires(
+            List<Livrable> livrables,
+            List<LivrableAttendu> attendus
+        ) {
+            List<LivrableAttendu> attendusObligatoires = attendus.stream()
+            .filter(LivrableAttendu::isObligatoire)
+                .toList();
+            if (attendusObligatoires.isEmpty()) {
+                return true;
+            }
+
+            java.util.Set<UUID> idsAttendus = attendusObligatoires.stream()
+            .map(LivrableAttendu::getId)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+            if (idsAttendus.size() < attendusObligatoires.size()) {
+                return livrables.size() >= attendusObligatoires.size();
+        }
+
+        java.util.Set<UUID> idsCouverts = livrables.stream()
+            .map(Livrable::getLivrableAttendu)
+            .filter(java.util.Objects::nonNull)
+            .map(LivrableAttendu::getId)
+            .filter(idsAttendus::contains)
+            .collect(java.util.stream.Collectors.toSet());
+        long remisesAnciennesSansAttendu = livrables.stream()
+            .filter(livrable -> livrable.getLivrableAttendu() == null)
+            .count();
+        return idsCouverts.size() + Math.min(
+            remisesAnciennesSansAttendu,
+            idsAttendus.size() - idsCouverts.size()) >= idsAttendus.size();
+        }
 
     private List<MissionCohorte> missionsCohorteApplicables(Progression progression, Etape etape, UUID structureId) {
         UUID projetCohorteId = progression.getProjet().getCohorte() != null

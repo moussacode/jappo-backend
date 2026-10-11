@@ -54,6 +54,6 @@ public class MonParcoursController {
     public ResponseEntity<List<MissionResponse>> getMesMissions(
             @AuthenticationPrincipal User currentUser) {
         ProjetResponse projet = projetService.getProjetPrincipalByEntrepreneur(currentUser.getId());
-        return ResponseEntity.ok(missionService.getMissionsByProjet(projet.id()));
+        return ResponseEntity.ok(missionService.getMissionsActivesEntrepreneur(projet.id()));
     }
 }

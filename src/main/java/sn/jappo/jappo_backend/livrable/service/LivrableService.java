@@ -504,7 +504,9 @@ public class LivrableService {
     private void validerFormatAttendu(LivrableAttendu attendu, TypeLivrable typeSoumis) {
         TypeLivrable type = typeSoumis != null ? typeSoumis : TypeLivrable.FICHIER;
         boolean interactiveTemplate = attendu.getType() == TypeLivrable.TEMPLATE
-                && !TemplateFieldCodec.decode(attendu.getTemplateConfiguration()).isEmpty();
+                && !TemplateFieldCodec.decode(
+                        attendu.getTemplateConfiguration(),
+                        attendu.getTemplateType()).isEmpty();
         boolean formatCompatible = attendu.getType() == TypeLivrable.TEMPLATE
                 ? interactiveTemplate ? type == TypeLivrable.TEMPLATE
                         : type == TypeLivrable.FICHIER || type == TypeLivrable.LIEN
@@ -522,7 +524,9 @@ public class LivrableService {
             TypeLivrable type,
             String contenu
     ) {
-        List<TemplateField> fields = TemplateFieldCodec.decode(attendu.getTemplateConfiguration());
+        List<TemplateField> fields = TemplateFieldCodec.decode(
+                attendu.getTemplateConfiguration(),
+                attendu.getTemplateType());
         if (attendu.getType() != TypeLivrable.TEMPLATE || fields.isEmpty()) {
             return;
         }

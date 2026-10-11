@@ -213,7 +213,9 @@ public class LivrableAttenduService {
             String templateType
     ) {
         if (fields == null) {
-            return List.of();
+            return "BMC".equalsIgnoreCase(templateType)
+                    ? TemplateFieldCodec.defaultBmcFields()
+                    : List.of();
         }
         if (type != TypeLivrable.TEMPLATE || templateType == null) {
             throw new IllegalArgumentException("Les champs ne peuvent être configurés que pour un template nommé.");
@@ -263,7 +265,9 @@ public class LivrableAttenduService {
                 livrableAttendu.isObligatoire(),
                 livrableAttendu.getType(),
                 livrableAttendu.getTemplateType(),
-                TemplateFieldCodec.decode(livrableAttendu.getTemplateConfiguration()),
+                TemplateFieldCodec.decode(
+                        livrableAttendu.getTemplateConfiguration(),
+                        livrableAttendu.getTemplateType()),
                 missionEtapeId,
                 etapeId,
                 structureId,

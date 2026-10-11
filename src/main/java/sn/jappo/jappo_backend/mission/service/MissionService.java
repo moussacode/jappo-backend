@@ -399,6 +399,33 @@ public class MissionService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<MissionResponse> getMissionsActivesEntrepreneur(UUID projetId) {
+        UUID activeStructureId = getRequiredTenantId();
+        return missionProjetRepository.findAllByProjetIdAndStructureId(projetId, activeStructureId)
+                .stream()
+                .filter(mission -> !mission.isArchive())
+                .filter(this::definitionMissionActive)
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    private boolean definitionMissionActive(MissionProjet mission) {
+        MissionEtape missionEtape = mission.getMissionEtape();
+        if (missionEtape != null && missionEtape.getEtape() != null) {
+            Etape etape = missionEtape.getEtape();
+            return !etape.isArchive() && etape.getPhase() != null && !etape.getPhase().isArchive();
+        }
+
+        MissionCohorte missionCohorte = mission.getMissionCohorte();
+        if (missionCohorte == null || missionCohorte.isArchive()) {
+            return missionCohorte == null;
+        }
+
+        Etape etape = missionCohorte.getEtape();
+        return etape == null || (!etape.isArchive() && etape.getPhase() != null && !etape.getPhase().isArchive());
+    }
+
         public List<MissionResponse> getMissionsByProjet(UUID projetId, User user, boolean gestionnaire) {
         UUID activeStructureId = getRequiredTenantId();
         Projet projet = projetRepository.findByIdAndStructureId(projetId, activeStructureId)
@@ -622,7 +649,9 @@ public class MissionService {
         return new LivrableAttenduResponse(
                 expected.getId(), expected.getTitre(), expected.getDescription(), expected.getOrdre(),
                 expected.isObligatoire(), expected.getType(), expected.getTemplateType(),
-                TemplateFieldCodec.decode(expected.getTemplateConfiguration()),
+                TemplateFieldCodec.decode(
+                        expected.getTemplateConfiguration(),
+                        expected.getTemplateType()),
                 missionEtape != null ? missionEtape.getId() : null,
                 etape != null ? etape.getId() : null,
                 missionEtape != null && missionEtape.getStructure() != null

@@ -157,7 +157,8 @@ private String googleClientId;
                     membre.getStructure().getNom(),
                     membre.getStructure().getLogo(),
                     compteExiste,
-                    membre.getRole() != null ? membre.getRole().name() : null
+                    membre.getRole() != null ? membre.getRole().name() : null,
+                    membre.getStructure().getId().toString()
             );
         }
 
@@ -174,7 +175,8 @@ private String googleClientId;
                     link.getStructure().getNom(),
                     link.getStructure().getLogo(),
                     false,
-                    link.getRole() != null ? link.getRole().name() : null
+                    link.getRole() != null ? link.getRole().name() : null,
+                    link.getStructure().getId().toString()
             );
         }
 

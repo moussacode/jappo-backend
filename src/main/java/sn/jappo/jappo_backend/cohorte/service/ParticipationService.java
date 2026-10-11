@@ -152,6 +152,13 @@ public class ParticipationService {
     ) {
         UUID structureId = getRequiredTenantId();
 
+        if (request.forcer() && (request.raison() == null || request.raison().isBlank())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Une raison est obligatoire pour forcer une promotion"
+            );
+        }
+
         Projet projet = projetRepository
                 .findByIdAndStructureId(projetId, structureId)
                 .orElseThrow(() -> new ResponseStatusException(

@@ -6,5 +6,6 @@ public record InvitationInfoResponse(
         String nomStructure,
         String logoStructure,
         boolean compteExiste,
-        String role
+        String role,
+        String structureId
 ) {}

@@ -29,6 +29,7 @@ import sn.jappo.jappo_backend.parcours.repository.ParcoursRepository;
 import sn.jappo.jappo_backend.parcours.repository.PhaseRepository;
 import sn.jappo.jappo_backend.progression.entity.HistoriqueProgression;
 import sn.jappo.jappo_backend.progression.entity.Progression;
+import sn.jappo.jappo_backend.progression.dto.AvancerProgressionRequest;
 import sn.jappo.jappo_backend.progression.exception.InvalidProgressionTransitionException;
 import sn.jappo.jappo_backend.progression.repository.HistoriqueProgressionRepository;
 import sn.jappo.jappo_backend.progression.repository.ProgressionRepository;
@@ -448,6 +449,28 @@ public class ProgressionServiceTest {
                                         InvalidProgressionTransitionException.class,
                                         () -> progressionService.validerEtape(progressionId, coach));
                         assertTrue(exception.getMessage().contains("tous les livrables obligatoires ne sont pas validés"));
+                        verify(historiqueProgressionRepository, never()).save(any(HistoriqueProgression.class));
+                } finally {
+                        TenantContext.clear();
+                }
+        }
+
+        @Test
+        public void avancerProgression_nePermetPasUnChangementDePhaseDirect() {
+                setupCommonMocks();
+                when(progressionRepository.findById(progressionId)).thenReturn(Optional.of(progression));
+                UUID phaseCibleId = UUID.randomUUID();
+                TenantContext.setCurrentTenant(structureId);
+
+                try {
+                        InvalidProgressionTransitionException exception = assertThrows(
+                                        InvalidProgressionTransitionException.class,
+                                        () -> progressionService.avancerProgression(
+                                                        progressionId,
+                                                        new AvancerProgressionRequest(phaseCibleId, null, "activation"),
+                                                        coach));
+
+                        assertTrue(exception.getMessage().contains("promotion vers une cohorte"));
                         verify(historiqueProgressionRepository, never()).save(any(HistoriqueProgression.class));
                 } finally {
                         TenantContext.clear();
