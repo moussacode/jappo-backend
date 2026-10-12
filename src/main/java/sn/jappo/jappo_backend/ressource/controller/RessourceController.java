@@ -5,9 +5,13 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -20,6 +24,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import sn.jappo.jappo_backend.config.tenant.TenantContext;
+import sn.jappo.jappo_backend.ia.context.AiResourceContextService;
+import sn.jappo.jappo_backend.ia.context.AiResourceContextService.ResourceFile;
 import sn.jappo.jappo_backend.ressource.dto.CreateRessourceRequest;
 import sn.jappo.jappo_backend.ressource.dto.RessourceResponse;
 import sn.jappo.jappo_backend.ressource.dto.UpdateRessourceRequest;
@@ -47,9 +54,13 @@ import sn.jappo.jappo_backend.ressource.service.RessourceService;
 public class RessourceController {
 
     private final RessourceService ressourceService;
+    private final AiResourceContextService aiResourceContextService;
 
-    public RessourceController(RessourceService ressourceService) {
+    public RessourceController(
+            RessourceService ressourceService,
+            AiResourceContextService aiResourceContextService) {
         this.ressourceService = ressourceService;
+        this.aiResourceContextService = aiResourceContextService;
     }
 
     @GetMapping
@@ -61,6 +72,23 @@ public class RessourceController {
     @GetMapping("/{id}")
     public ResponseEntity<RessourceResponse> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(ressourceService.getById(id));
+    }
+
+    @GetMapping("/{id}/fichier")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
+    public ResponseEntity<byte[]> getFile(@PathVariable UUID id) {
+        UUID structureId = TenantContext.getCurrentTenant();
+        if (structureId == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED, "Aucune structure active");
+        }
+        ResourceFile file = aiResourceContextService.loadAccessibleResourceFile(structureId, id);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(file.contentType()));
+        headers.setContentDisposition(ContentDisposition.inline().filename(file.filename()).build());
+        headers.setCacheControl(CacheControl.noStore());
+        headers.set("X-Content-Type-Options", "nosniff");
+        return new ResponseEntity<>(file.content(), headers, HttpStatus.OK);
     }
 
     @GetMapping("/cohorte/{cohorteId}")

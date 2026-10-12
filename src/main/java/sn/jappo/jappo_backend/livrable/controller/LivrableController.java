@@ -66,6 +66,12 @@ public class LivrableController {
         return ResponseEntity.ok(livrableService.getLivrableById(id));
     }
 
+    @GetMapping("/export")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
+    public ResponseEntity<List<LivrableResponse>> getLivrablesPourExport() {
+        return ResponseEntity.ok(livrableService.getLivrablesPourExport());
+    }
+
     @GetMapping("/mission/{missionProjetId}")
     public ResponseEntity<List<LivrableResponse>> getLivrablesByMission(@PathVariable UUID missionProjetId) {
         return ResponseEntity.ok(livrableService.getLivrablesByMission(missionProjetId));

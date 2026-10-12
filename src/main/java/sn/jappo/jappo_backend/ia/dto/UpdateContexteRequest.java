@@ -12,5 +12,6 @@ import java.util.UUID;
 public record UpdateContexteRequest(
         UUID cohorteId,
         UUID projetId,
-        UUID entrepreneurId
+        UUID entrepreneurId,
+        UUID missionId
 ) {}

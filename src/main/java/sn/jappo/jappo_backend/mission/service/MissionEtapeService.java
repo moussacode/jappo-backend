@@ -61,7 +61,8 @@ public class MissionEtapeService {
     @Transactional(readOnly = true)
     public List<MissionEtapeResponse> getMissionsByEtapeId(UUID etapeId) {
         UUID structureId = getRequiredTenantId();
-        Etape etape = loadEtapeForStructure(etapeId, structureId);
+        Etape etape = etapeRepository.findByIdAndStructureId(etapeId, structureId)
+                .orElseThrow(() -> new IllegalArgumentException("Étape introuvable pour cette structure"));
 
         return missionEtapeRepository
                 .findByEtapeIdAndStructureIdOrderByOrdreAsc(etape.getId(), structureId)

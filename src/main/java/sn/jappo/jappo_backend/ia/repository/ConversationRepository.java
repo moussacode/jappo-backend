@@ -25,6 +25,8 @@ public interface ConversationRepository extends JpaRepository<Conversation, UUID
     /** Récupérer une conversation en vérifiant le tenant — TOUJOURS utiliser cette méthode. */
     Optional<Conversation> findByIdAndStructureId(UUID id, UUID structureId);
 
+    Optional<Conversation> findByIdAndStructureIdAndCoachId(UUID id, UUID structureId, UUID coachId);
+
     /** Récupérer les conversations actives d'un coach, triées par date de dernière activité. */
     List<Conversation> findAllByStructureIdAndCoachIdAndArchiveeFalseOrderByDateDerniereActiviteDesc(UUID structureId, UUID coachId);
 

@@ -31,7 +31,8 @@ public interface RessourceRepository extends JpaRepository<Ressource, UUID> {
                  OR (r.portee = sn.jappo.jappo_backend.ressource.entity.PorteeRessource.COHORTE AND r.cohorte.id IN :cohorteIds)
                  OR (r.portee = sn.jappo.jappo_backend.ressource.entity.PorteeRessource.PARCOURS AND r.parcours.id IN :parcoursIds)
                  OR (r.portee = sn.jappo.jappo_backend.ressource.entity.PorteeRessource.PHASE AND r.phase.id IN :phaseIds)
-                 OR r.id IN :missionRessourceIds
+                 OR (r.portee = sn.jappo.jappo_backend.ressource.entity.PorteeRessource.MISSION
+                     AND r.id IN :missionRessourceIds)
               )
             ORDER BY r.createdAt DESC
             """)
@@ -40,6 +41,26 @@ public interface RessourceRepository extends JpaRepository<Ressource, UUID> {
             @Param("cohorteIds") List<UUID> cohorteIds,
             @Param("parcoursIds") List<UUID> parcoursIds,
             @Param("phaseIds") List<UUID> phaseIds,
+            @Param("missionRessourceIds") List<UUID> missionRessourceIds
+    );
+
+    @Query("""
+            SELECT DISTINCT r FROM Ressource r
+            WHERE r.structure.id = :structureId
+              AND r.archivee = false
+              AND (
+                    (:cohorteId IS NOT NULL AND r.portee = sn.jappo.jappo_backend.ressource.entity.PorteeRessource.COHORTE AND r.cohorte.id = :cohorteId)
+                 OR (:parcoursId IS NOT NULL AND r.portee = sn.jappo.jappo_backend.ressource.entity.PorteeRessource.PARCOURS AND r.parcours.id = :parcoursId)
+                 OR (:phaseId IS NOT NULL AND r.portee = sn.jappo.jappo_backend.ressource.entity.PorteeRessource.PHASE AND r.phase.id = :phaseId)
+                 OR r.id IN :missionRessourceIds
+              )
+            ORDER BY r.createdAt DESC
+            """)
+    List<Ressource> findActiveEntrepreneurScoped(
+            @Param("structureId") UUID structureId,
+            @Param("cohorteId") UUID cohorteId,
+            @Param("parcoursId") UUID parcoursId,
+            @Param("phaseId") UUID phaseId,
             @Param("missionRessourceIds") List<UUID> missionRessourceIds
     );
 }

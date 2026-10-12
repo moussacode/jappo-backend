@@ -32,6 +32,8 @@ public interface ProjetRepository extends JpaRepository<Projet, UUID> {
 
     Optional<Projet> findByEntrepreneurIdAndStructureId(UUID entrepreneurId, UUID structureId);
 
+    List<Projet> findAllByEntrepreneurIdAndStructureId(UUID entrepreneurId, UUID structureId);
+
     boolean existsByEntrepreneurIdAndStructureId(UUID entrepreneurId, UUID structureId);
 
     @Query("SELECT AVG(p.scoreMaturite) FROM Projet p WHERE p.structure.id = :structureId")

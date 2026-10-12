@@ -9,6 +9,7 @@ import sn.jappo.jappo_backend.cohorte.repository.CohorteRepository;
 import sn.jappo.jappo_backend.livrable.entity.StatutLivrable;
 import sn.jappo.jappo_backend.livrable.repository.LivrableRepository;
 import sn.jappo.jappo_backend.mission.entity.MissionCohorte;
+import sn.jappo.jappo_backend.mission.entity.MissionProjet;
 import sn.jappo.jappo_backend.mission.entity.StatutMission;
 import sn.jappo.jappo_backend.mission.repository.MissionCohorteRepository;
 import sn.jappo.jappo_backend.mission.repository.MissionProjetRepository;
@@ -18,6 +19,9 @@ import sn.jappo.jappo_backend.projet.entity.Projet;
 import sn.jappo.jappo_backend.projet.repository.ProjetRepository;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.MembreStructureRepository;
+import sn.jappo.jappo_backend.structure.entity.MembreStructure;
+import sn.jappo.jappo_backend.structure.entity.RoleMembreStructure;
+import sn.jappo.jappo_backend.structure.entity.StatutMembre;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
 import sn.jappo.jappo_backend.user.entity.User;
 import sn.jappo.jappo_backend.user.repository.UserRepository;
@@ -57,7 +61,8 @@ public class AiContextBuilder {
     private final UserRepository userRepository;
     private final MembreStructureRepository membreStructureRepository; 
     private final ParcoursRepository parcoursRepository;
-private final PhaseRepository phaseRepository;
+    private final PhaseRepository phaseRepository;
+    private final AiResourceContextService aiResourceContextService;
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -71,7 +76,8 @@ private final PhaseRepository phaseRepository;
             UserRepository userRepository,
             MembreStructureRepository membreStructureRepository,
             ParcoursRepository parcoursRepository,
-        PhaseRepository phaseRepository
+            PhaseRepository phaseRepository,
+            AiResourceContextService aiResourceContextService
             
     ) {
         this.structureRepository = structureRepository;
@@ -83,7 +89,8 @@ private final PhaseRepository phaseRepository;
         this.userRepository = userRepository;
         this.membreStructureRepository = membreStructureRepository;
         this.parcoursRepository = parcoursRepository;
-    this.phaseRepository = phaseRepository;
+        this.phaseRepository = phaseRepository;
+        this.aiResourceContextService = aiResourceContextService;
     }
 
     /**
@@ -107,7 +114,21 @@ private final PhaseRepository phaseRepository;
             ctx.setUserPrenom(currentUser.getPrenom());
             ctx.setUserNom(currentUser.getNom());
             // Le rôle pourrait être déduit depuis MembreStructure, mais pour simplifier on peut le passer directement
-            ctx.setUserRole("USER"); // À adapter selon la logique métier
+            ctx.setUserRole("USER");
+        }
+
+        MembreStructure membre = currentUser == null ? null
+                : membreStructureRepository.findByUserIdAndStructureId(currentUser.getId(), structureId).orElse(null);
+        if (membre != null && membre.getRole() == RoleMembreStructure.ENTREPRENEUR) {
+            if (membre.getStatut() != StatutMembre.ACCEPTE) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Membre entrepreneur inactif");
+            }
+            ctx.setUserRole(RoleMembreStructure.ENTREPRENEUR.name());
+            buildContexteEntrepreneur(ctx, structureId, contexte, currentUser);
+            return ctx;
+        }
+        if (membre != null) {
+            ctx.setUserRole(membre.getRole().name());
         }
 
         if (contexte == null || contexte.isEmpty()) {
@@ -121,10 +142,21 @@ private final PhaseRepository phaseRepository;
             buildContexteCohorte(ctx, structureId, contexte.getCohorteId());
         } else {
             // entrepreneurId seul (cas D partiel)
-            buildContexteEntrepreneur(ctx, structureId, contexte.getEntrepreneurId());
+            buildContexteEntrepreneurSelectionne(ctx, structureId, contexte.getEntrepreneurId());
         }
 
         return ctx;
+    }
+
+    public AiResourceContextService.ResourceFile loadEntrepreneurSourceFile(
+            UUID structureId, ConversationContexte contexte, User currentUser, UUID sourceId) {
+        AiContext context = build(structureId, contexte, currentUser);
+        boolean sourceIsAllowed = "ENTREPRENEUR".equals(context.getUserRole())
+                && context.getSources().stream().anyMatch(source -> source.id.equals(sourceId));
+        if (!sourceIsAllowed) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source introuvable");
+        }
+        return aiResourceContextService.loadStoredResourceFile(structureId, sourceId);
     }
 
     // ── Cas A : contexte global ──────────────────────────────────────────────
@@ -193,7 +225,6 @@ List<AiContext.ParcoursContext> parcoursCtx = parcoursRepository
         .map(p -> new AiContext.ParcoursContext(p.getId(), p.getNom()))
         .toList();
 ctx.setParcours(parcoursCtx);
-System.out.println("DEBUG parcours trouvés pour structure " + structureId + " : " + parcoursCtx.size());
 // NOUVEAU — Charger les phases actives (non archivées) de la structure
 List<AiContext.PhaseContext> phasesCtx = phaseRepository
         .findAllByStructureIdAndArchiveFalseOrderByNom(structureId)
@@ -276,24 +307,149 @@ ctx.setPhases(phasesCtx);
         ctx.setLivrables(buildLivrablesContextForProjet(projetId, structureId));
     }
 
-    // ── Cas D partiel : entrepreneur sélectionné seul ────────────────────────
+    // ── Cas D partiel : entrepreneur sélectionné par un coach ────────────────
 
-    private void buildContexteEntrepreneur(AiContext ctx, UUID structureId, UUID entrepreneurId) {
+    private void buildContexteEntrepreneurSelectionne(
+            AiContext ctx, UUID structureId, UUID entrepreneurId) {
         ctx.setContextGlobal(false);
-
-        // Trouver le projet de cet entrepreneur dans cette structure
         projetRepository.findByEntrepreneurIdAndStructureId(entrepreneurId, structureId)
                 .ifPresent(projet -> {
                     ctx.setProjets(buildProjetsContext(List.of(projet), structureId));
                     ctx.setNombreTotalProjets(1);
                     ctx.setNombreTotalEntrepreneurs(1);
-                    
-                    // Missions du projet (détails complets)
                     ctx.setMissions(buildMissionsContextForProjet(projet.getId(), structureId));
-                    
-                    // Livrables du projet (détails complets)
                     ctx.setLivrables(buildLivrablesContextForProjet(projet.getId(), structureId));
                 });
+    }
+
+    // ── Contexte entrepreneur authentifié ───────────────────────────────────
+    private void buildContexteEntrepreneur(
+            AiContext ctx, UUID structureId, ConversationContexte contexte,
+            User currentUser) {
+        ctx.setContextGlobal(false);
+        UUID entrepreneurId = currentUser.getId();
+        if (contexte != null && contexte.getEntrepreneurId() != null
+                && !entrepreneurId.equals(contexte.getEntrepreneurId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Entrepreneur hors périmètre");
+        }
+
+        List<Projet> projetsPropres = projetRepository.findAllByEntrepreneurIdAndStructureId(
+                entrepreneurId, structureId);
+        if (projetsPropres.isEmpty()) {
+            boolean contexteDemandeDesDonneesProjet = contexte != null
+                    && (contexte.getCohorteId() != null
+                    || contexte.getProjetId() != null
+                    || contexte.getMissionId() != null);
+            if (!contexteDemandeDesDonneesProjet) {
+                // Un entrepreneur sans projet peut discuter de sujets généraux,
+                // mais ne reçoit aucune donnée de la structure ou d'un autre projet.
+                ctx.setSources(aiResourceContextService.loadForEntrepreneur(
+                        structureId, null, null, null, List.of()));
+                return;
+            }
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Projet introuvable");
+        }
+        List<UUID> ownProjectIds = projetsPropres.stream().map(Projet::getId).toList();
+        Projet projet;
+        MissionProjet missionSelectionnee = null;
+        if (contexte != null && contexte.getProjetId() != null) {
+            projet = projetsPropres.stream()
+                    .filter(ownProject -> ownProject.getId().equals(contexte.getProjetId()))
+                    .findFirst()
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Projet hors périmètre"));
+        } else if (contexte != null && contexte.getMissionId() != null) {
+            missionSelectionnee = missionProjetRepository
+                    .findByIdAndProjetIdInAndStructureId(contexte.getMissionId(), ownProjectIds, structureId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Mission hors périmètre"));
+            projet = missionSelectionnee.getProjet();
+        } else if (projetsPropres.size() == 1) {
+            projet = projetsPropres.getFirst();
+        } else {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sélectionnez un projet pour discuter");
+        }
+        Cohorte cohorte = projet.getCohorte();
+        if (cohorte != null && !structureId.equals(cohorte.getStructure().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Projet hors structure active");
+        }
+        if (contexte != null && contexte.getCohorteId() != null
+                && (cohorte == null || !cohorte.getId().equals(contexte.getCohorteId()))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cohorte hors périmètre");
+        }
+
+        List<MissionProjet> missionsProjet = missionProjetRepository
+                .findAllByProjetIdAndStructureId(projet.getId(), structureId);
+        if (missionSelectionnee == null && contexte != null && contexte.getMissionId() != null) {
+            missionSelectionnee = missionProjetRepository
+                    .findByIdAndProjetIdAndStructureId(contexte.getMissionId(), projet.getId(), structureId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Mission hors périmètre"));
+        }
+
+        ctx.setProjets(buildProjetsContext(List.of(projet), structureId));
+        ctx.setNombreTotalProjets(1);
+        ctx.setNombreTotalEntrepreneurs(1);
+        List<AiContext.MissionContext> projectMissions = buildMissionsContextForProjet(projet.getId(), structureId);
+        if (missionSelectionnee != null) {
+            UUID missionSelectionneeId = missionSelectionnee.getId();
+            ctx.setMissions(projectMissions.stream()
+                    .filter(mission -> mission.id.equals(missionSelectionneeId))
+                    .toList());
+        } else {
+            ctx.setMissions(projectMissions);
+        }
+        ctx.setLivrables(missionSelectionnee == null
+                ? buildLivrablesContextForProjet(projet.getId(), structureId)
+                : buildLivrablesContextForMission(missionSelectionnee, structureId));
+
+        UUID cohorteId = null;
+        UUID parcoursId = null;
+        UUID phaseId = null;
+        if (cohorte != null && cohorte.getStructure().getId().equals(structureId)) {
+            cohorteId = cohorte.getId();
+            if (cohorte.getParcours() != null
+                    && !cohorte.getParcours().isArchive()
+                    && cohorte.getParcours().getStructure().getId().equals(structureId)) {
+                parcoursId = cohorte.getParcours().getId();
+            }
+            if (cohorte.getPhase() != null
+                    && !cohorte.getPhase().isArchive()
+                    && cohorte.getPhase().getStructure().getId().equals(structureId)) {
+                phaseId = cohorte.getPhase().getId();
+            }
+        }
+        List<MissionProjet> resourceMissions = missionSelectionnee == null
+                ? missionsProjet : List.of(missionSelectionnee);
+        List<UUID> missionResourceIds = resourceMissions.stream()
+                .filter(mission -> !mission.isArchive())
+                .filter(mp -> mp.getMissionCohorte() != null)
+                .filter(mp -> !mp.getMissionCohorte().isArchive())
+                .flatMap(mp -> mp.getMissionCohorte().getRessources().stream())
+                .map(resource -> resource.getId())
+                .distinct()
+                .toList();
+        ctx.setSources(aiResourceContextService.loadForEntrepreneur(
+                structureId, cohorteId, parcoursId, phaseId, missionResourceIds));
+    }
+
+    private List<AiContext.LivrableContext> buildLivrablesContextForMission(
+            MissionProjet mission, UUID structureId) {
+        return mission.getLivrables().stream()
+                .filter(l -> l.getStructure().getId().equals(structureId))
+                .map(l -> {
+                    MissionCohorte missionCohorte = mission.getMissionCohorte();
+                    sn.jappo.jappo_backend.mission.entity.MissionEtape missionEtape = mission.getMissionEtape();
+                    return new AiContext.LivrableContext(
+                            l.getId(),
+                            l.getNom(),
+                            l.getStatut() != null ? l.getStatut().name() : null,
+                            l.getDateDepot() != null ? l.getDateDepot().format(DATE_FORMATTER) : null,
+                            l.getDateEvaluation() != null ? l.getDateEvaluation().format(DATE_FORMATTER) : null,
+                            mission.getId(),
+                            missionCohorte != null ? missionCohorte.getTitre()
+                                    : missionEtape != null ? missionEtape.getTitre() : null,
+                            mission.getProjet().getId(),
+                            mission.getProjet().getNom());
+                })
+                .toList();
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -356,10 +512,15 @@ ctx.setPhases(phasesCtx);
         
         return missionsProjet.stream().map(mp -> {
             MissionCohorte mc = mp.getMissionCohorte();
+            sn.jappo.jappo_backend.mission.entity.MissionEtape missionEtape = mp.getMissionEtape();
+            String titre = mc != null ? mc.getTitre()
+                    : missionEtape != null ? missionEtape.getTitre() : "Mission sans titre";
+            String description = mc != null ? mc.getDescription()
+                    : missionEtape != null ? missionEtape.getDescription() : null;
             return new AiContext.MissionContext(
                     mp.getId(),
-                    mc != null ? mc.getTitre() : "Mission sans titre",
-                    mc != null ? mc.getDescription() : null,
+                    titre,
+                    description,
                     mc != null && mc.getPriorite() != null ? mc.getPriorite().name() : null,
                     mc != null && mc.getDateEcheance() != null ? mc.getDateEcheance().format(DATE_FORMATTER) : null,
                     mp.getStatut() != null ? mp.getStatut().name() : null,

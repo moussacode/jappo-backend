@@ -50,47 +50,69 @@ protected boolean shouldNotFilter(HttpServletRequest request) throws ServletExce
             throws ServletException, IOException {
 
         String tenantIdHeader = request.getHeader(TENANT_HEADER);
+        String requestPath = request.getRequestURI().substring(request.getContextPath().length());
+        UUID tenantId = null;
 
         if (tenantIdHeader != null && !tenantIdHeader.isBlank()) {
-            UUID tenantId;
             try {
                 tenantId = UUID.fromString(tenantIdHeader);
             } catch (IllegalArgumentException e) {
                 writeError(response, HttpServletResponse.SC_BAD_REQUEST, "En-tête X-Structure-Id invalide.");
                 return;
             }
-
-           User currentUser = getAuthenticatedUser();
-
-if (currentUser != null) {
-
-    // SUPER_ADMIN : accès global, pas de membership obligatoire
-    if (currentUser.getRoleGlobal() == RoleGlobal.SUPER_ADMIN) {
-        TenantContext.setCurrentTenant(tenantId);
-
-    } else {
-
-        Optional<MembreStructure> membership =
-                membreStructureRepository.findByUserIdAndStructureId(
-                        currentUser.getId(),
-                        tenantId
-                );
-
-        boolean estMembreActif = membership.isPresent()
-                && membership.get().getStatut() == StatutMembre.ACCEPTE;
-
-        if (!estMembreActif) {
-            writeError(
-                    response,
-                    HttpServletResponse.SC_FORBIDDEN,
-                    "Vous n'êtes pas membre de cette structure."
-            );
-            return;
         }
 
-        TenantContext.setCurrentTenant(tenantId);
-    }
-}}
+        if (requestPath.startsWith("/fichiers/")) {
+            if (tenantId == null) {
+                writeError(response, HttpServletResponse.SC_UNAUTHORIZED,
+                        "Une structure active est requise pour accéder à ce fichier.");
+                return;
+            }
+
+            String[] pathSegments = requestPath.split("/");
+            if (pathSegments.length != 5
+                    || !("ressources".equals(pathSegments[2]) || "livrables".equals(pathSegments[2]))) {
+                response.sendError(HttpServletResponse.SC_NOT_FOUND);
+                return;
+            }
+
+            UUID fileTenantId;
+            try {
+                fileTenantId = UUID.fromString(pathSegments[3]);
+            } catch (IllegalArgumentException e) {
+                response.sendError(HttpServletResponse.SC_NOT_FOUND);
+                return;
+            }
+            if (!tenantId.equals(fileTenantId)) {
+                writeError(response, HttpServletResponse.SC_FORBIDDEN,
+                        "Ce fichier n'appartient pas à la structure active.");
+                return;
+            }
+        }
+
+        if (tenantId != null) {
+            User currentUser = getAuthenticatedUser();
+            if (currentUser != null) {
+                if (currentUser.getRoleGlobal() == RoleGlobal.SUPER_ADMIN) {
+                    TenantContext.setCurrentTenant(tenantId);
+                } else {
+                    Optional<MembreStructure> membership =
+                            membreStructureRepository.findByUserIdAndStructureId(
+                                    currentUser.getId(),
+                                    tenantId);
+
+                    boolean estMembreActif = membership.isPresent()
+                            && membership.get().getStatut() == StatutMembre.ACCEPTE;
+
+                    if (!estMembreActif) {
+                        writeError(response, HttpServletResponse.SC_FORBIDDEN,
+                                "Vous n'êtes pas membre de cette structure.");
+                        return;
+                    }
+                    TenantContext.setCurrentTenant(tenantId);
+                }
+            }
+        }
 
         try {
             filterChain.doFilter(request, response);

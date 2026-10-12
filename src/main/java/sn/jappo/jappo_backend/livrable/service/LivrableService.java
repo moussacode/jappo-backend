@@ -583,6 +583,15 @@ public class LivrableService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<LivrableResponse> getLivrablesPourExport() {
+        UUID activeStructureId = getRequiredTenantId();
+        return livrableRepository.findAllByStructureId(activeStructureId)
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
     private UUID getRequiredTenantId() {
         UUID tenantId = TenantContext.getCurrentTenant();
         if (tenantId == null) {

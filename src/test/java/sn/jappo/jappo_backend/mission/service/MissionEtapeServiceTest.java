@@ -253,6 +253,21 @@ class MissionEtapeServiceTest {
     }
 
     @Test
+    void getMissionsByEtapeId_etapeArchivee_returnsOrderedList() {
+        etape.setArchive(true);
+        MissionEtape mission = buildMissionEtape();
+
+        when(etapeRepository.findByIdAndStructureId(etapeId, structureId)).thenReturn(Optional.of(etape));
+        when(missionEtapeRepository.findByEtapeIdAndStructureIdOrderByOrdreAsc(etapeId, structureId))
+                .thenReturn(List.of(mission));
+
+        List<MissionEtapeResponse> result = missionEtapeService.getMissionsByEtapeId(etapeId);
+
+        assertEquals(1, result.size());
+        assertEquals("Mission étape", result.get(0).titre());
+    }
+
+    @Test
     void createMissionEtape_etapeArchivee_refusee() {
         etape.setArchive(true);
         when(structureRepository.findById(structureId)).thenReturn(Optional.of(structure));

@@ -9,7 +9,7 @@ import java.util.UUID;
  *
  * AiContext est construit par AiContextBuilder à partir de :
  *   - la structure active (TenantContext)
- *   - le ConversationContexte (périmètre sélectionné par le coach)
+ *   - le ConversationContexte (périmètre sélectionné par l'utilisateur)
  *   - les données réelles de la BDD (via les repositories/services métier existants)
  *
  * Il ne doit JAMAIS contenir d'entités JPA complètes — uniquement des
@@ -51,6 +51,7 @@ public class AiContext {
 
     // Données phases (structure globale)
     private List<PhaseContext> phases = new ArrayList<>();
+    private List<SourceContext> sources = new ArrayList<>();
 
     // Statistiques agrégées utiles au LLM (évite d'envoyer toutes les entités)
     private long nombreTotalEntrepreneurs;
@@ -187,6 +188,22 @@ public class AiContext {
         }
     }
 
+    public static class SourceContext {
+        public UUID id;
+        public String title;
+        public String url;
+        public String snippet;
+        public String text;
+
+        public SourceContext(UUID id, String title, String url, String snippet, String text) {
+            this.id = id;
+            this.title = title;
+            this.url = url;
+            this.snippet = snippet;
+            this.text = text;
+        }
+    }
+
     // ── Getters / Setters ────────────────────────────────────────────────────
 
     public UUID getStructureId() { return structureId; }
@@ -227,6 +244,9 @@ public class AiContext {
 
     public List<PhaseContext> getPhases() { return phases; }
     public void setPhases(List<PhaseContext> phases) { this.phases = phases; }
+
+    public List<SourceContext> getSources() { return sources; }
+    public void setSources(List<SourceContext> sources) { this.sources = sources; }
 
     public long getNombreTotalEntrepreneurs() { return nombreTotalEntrepreneurs; }
     public void setNombreTotalEntrepreneurs(long n) { this.nombreTotalEntrepreneurs = n; }

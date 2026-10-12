@@ -17,6 +17,13 @@ public interface MissionProjetRepository extends JpaRepository<MissionProjet, UU
     List<MissionProjet> findAllByProjetIdAndStructureId(UUID projetId, UUID structureId);
     List<MissionProjet> findAllByMissionCohorteIdAndStructureId(UUID missionCohorteId, UUID structureId);
     Optional<MissionProjet> findByIdAndStructureId(UUID id, UUID structureId);
+    Optional<MissionProjet> findByIdAndProjetIdAndStructureId(UUID id, UUID projetId, UUID structureId);
+    @Query("select mp from MissionProjet mp where mp.id = :missionId "
+            + "and mp.projet.id in :projetIds and mp.structure.id = :structureId")
+    Optional<MissionProjet> findByIdAndProjetIdInAndStructureId(
+            @Param("missionId") UUID missionId,
+            @Param("projetIds") List<UUID> projetIds,
+            @Param("structureId") UUID structureId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select mp from MissionProjet mp where mp.id = :id and mp.structure.id = :structureId")

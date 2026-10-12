@@ -20,8 +20,8 @@ import java.util.UUID;
  * Représente une session de discussion entre un coach et l'Assistant IA.
  *
  * structureId  : tenant obligatoire — isolé par TenantContext.
- * coach        : utilisateur qui a créé la conversation.
- * contexteJson : périmètre sélectionné par le coach dans l'interface
+ * coach        : créateur/propriétaire de la conversation (nom de colonne historique).
+ * contexteJson : périmètre sélectionné dans l'interface
  *                ex: {}  ou  {"cohorteId":"..."}  ou  {"cohorteId":"...","projetId":"..."}.
  *                Stocké en JSON brut — ne pas confondre avec AiContext
  *                qui représente les données réelles récupérées depuis la BDD.

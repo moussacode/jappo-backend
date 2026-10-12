@@ -12,6 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import sn.jappo.jappo_backend.ia.context.AiContext;
 import sn.jappo.jappo_backend.ia.context.AiContextBuilder;
+import sn.jappo.jappo_backend.ia.context.AiResourceContextService;
 import sn.jappo.jappo_backend.ia.context.ConversationContexte;
 import sn.jappo.jappo_backend.ia.dto.*;
 import sn.jappo.jappo_backend.ia.entity.Auteur;
@@ -20,6 +21,7 @@ import sn.jappo.jappo_backend.ia.entity.Message;
 import sn.jappo.jappo_backend.ia.repository.ConversationRepository;
 import sn.jappo.jappo_backend.ia.repository.MessageRepository;
 import sn.jappo.jappo_backend.structure.entity.Structure;
+import sn.jappo.jappo_backend.structure.entity.RoleMembreStructure;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
 import sn.jappo.jappo_backend.user.entity.User;
 import sn.jappo.jappo_backend.user.repository.UserRepository;
@@ -82,17 +84,18 @@ public class ConversationIaService {
     // ── Création d'une conversation ──────────────────────────────────────────
 
     @Transactional
-    public ConversationResponse createConversation(User coach, CreateConversationRequest request) {
+    public ConversationResponse createConversation(User utilisateur, CreateConversationRequest request) {
         UUID structureId = getRequiredTenantId();
 
-         planLimiteService.verifierAssistantIA(structureId);
+        requireAuthenticatedUser(utilisateur);
+        planLimiteService.verifierAssistantIA(structureId);
 
         Structure structure = structureRepository.findById(structureId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Structure introuvable"));
 
         Conversation conversation = new Conversation();
         conversation.setStructure(structure);
-        conversation.setCoach(coach);
+        conversation.setCoach(utilisateur);
 
         // Sérialiser le contexte en JSON
         ConversationContexte contexte = request != null && request.contexte() != null
@@ -112,13 +115,10 @@ public class ConversationIaService {
     // ── Récupération d'une conversation + ses messages ───────────────────────
 
     @Transactional(readOnly = true)
-    public ConversationResponse getConversation(UUID conversationId) {
+    public ConversationResponse getConversation(UUID conversationId, User utilisateur) {
         UUID structureId = getRequiredTenantId();
 
-        Conversation conversation = conversationRepository
-                .findByIdAndStructureId(conversationId, structureId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Conversation introuvable ou accès non autorisé"));
+        Conversation conversation = findOwnedConversation(conversationId, structureId, utilisateur);
 
         List<Message> messages = messageRepository
                 .findAllByConversationIdOrderByDateEnvoiAsc(conversationId);
@@ -129,18 +129,19 @@ public class ConversationIaService {
     // ── Envoi d'un message et génération de la réponse ───────────────────────
 
     @Transactional
-    public List<MessageResponse> sendMessage(UUID conversationId, User coach, SendMessageRequest request) {
+    public List<MessageResponse> sendMessage(UUID conversationId, User utilisateur, SendMessageRequest request) {
         UUID structureId = getRequiredTenantId();
+        requireAuthenticatedUser(utilisateur);
 
         if (request == null || request.contenu() == null || request.contenu().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le contenu du message ne peut pas être vide");
         }
+        if (request.contenu().length() > 8_000) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le message dépasse la taille maximale autorisée");
+        }
 
         // 1. Charger et vérifier la conversation (tenant-safe)
-        Conversation conversation = conversationRepository
-                .findByIdAndStructureId(conversationId, structureId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Conversation introuvable ou accès non autorisé"));
+        Conversation conversation = findOwnedConversation(conversationId, structureId, utilisateur);
 
         // 2. Enregistrer le message COACH
         Message messageCoach = new Message();
@@ -160,7 +161,7 @@ public class ConversationIaService {
 
         // 4. Construire le AiContext à partir du contexte sélectionné
         ConversationContexte contexte = fromJson(conversation.getContexteJson());
-        AiContext aiContext = aiContextBuilder.build(structureId, contexte, coach);
+        AiContext aiContext = aiContextBuilder.build(structureId, contexte, utilisateur);
 
         // 5. Charger l'historique pour le transmettre au modèle
         List<Message> historique = messageRepository
@@ -175,14 +176,15 @@ public class ConversationIaService {
         messageAssistant.setAuteur(Auteur.ASSISTANT);
         messageAssistant.setContenu(reponse.content());
         messageAssistant.setModel(reponse.model());
-        messageAssistant.setSourcesJson(toJson(reponse.sources()));
+        messageAssistant.setSourcesJson(toJson(secureCitationUrls(aiContext, conversationId, reponse.sources())));
 
         Message savedAssistant = messageRepository.save(messageAssistant);
 
         // 8. Enregistrer les actions IA et récupérer les actions avec leurs IDs BDD
         List<java.util.Map<String, Object>> actionsEnregistrees = List.of();
 
-        if (reponse.success()
+        if (!RoleMembreStructure.ENTREPRENEUR.name().equals(aiContext.getUserRole())
+                && reponse.success()
                 && reponse.actions() != null
                 && !reponse.actions().isEmpty()) {
 
@@ -199,21 +201,62 @@ public class ConversationIaService {
         return List.of(mapMessage(savedCoach), mapMessage(savedAssistant));
     }
 
+    @Transactional(readOnly = true)
+    public AiResourceContextService.ResourceFile getEntrepreneurSourceFile(
+            UUID conversationId, UUID sourceId, User utilisateur) {
+        UUID structureId = getRequiredTenantId();
+        Conversation conversation = findOwnedConversation(conversationId, structureId, utilisateur);
+        return aiContextBuilder.loadEntrepreneurSourceFile(
+                structureId, fromJson(conversation.getContexteJson()), utilisateur, sourceId);
+    }
+
+    private List<java.util.Map<String, Object>> secureCitationUrls(
+            AiContext context, UUID conversationId, List<java.util.Map<String, Object>> citations) {
+        if (citations == null || citations.isEmpty()) {
+            return List.of();
+        }
+        return citations.stream()
+                .map(citation -> {
+                    Object rawId = citation.get("id");
+                    if (rawId == null) {
+                        return null;
+                    }
+                    String id = rawId.toString();
+                    AiContext.SourceContext source = context.getSources().stream()
+                            .filter(allowed -> allowed.id.toString().equals(id))
+                            .findFirst()
+                            .orElse(null);
+                    if (source == null) {
+                        return null;
+                    }
+                    java.util.Map<String, Object> canonical = new java.util.HashMap<>();
+                    canonical.put("id", source.id.toString());
+                    canonical.put("title", source.title);
+                    canonical.put("snippet", source.snippet);
+                    String url = source.url;
+                    if (url != null && url.startsWith("/fichiers/ressources/")) {
+                        url = "/api/conversations/" + conversationId + "/sources/" + source.id;
+                    }
+                    canonical.put("url", url);
+                    return canonical;
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
     // ── Mise à jour du contexte ──────────────────────────────────────────────
 
     @Transactional
-    public ConversationResponse updateContexte(UUID conversationId, UpdateContexteRequest request) {
+    public ConversationResponse updateContexte(UUID conversationId, UpdateContexteRequest request, User utilisateur) {
         UUID structureId = getRequiredTenantId();
 
-        Conversation conversation = conversationRepository
-                .findByIdAndStructureId(conversationId, structureId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Conversation introuvable ou accès non autorisé"));
+        Conversation conversation = findOwnedConversation(conversationId, structureId, utilisateur);
 
         ConversationContexte newContexte = new ConversationContexte(
                 request.cohorteId(),
                 request.projetId(),
-                request.entrepreneurId());
+                request.entrepreneurId(),
+                request.missionId());
         conversation.setContexteJson(toJson(newContexte));
         conversationRepository.save(conversation);
 
@@ -226,31 +269,34 @@ public class ConversationIaService {
     // ── Listing des conversations du coach ───────────────────────────────────
 
     @Transactional(readOnly = true)
-    public List<ConversationResponse> listConversations(User coach) {
+    public List<ConversationResponse> listConversations(User utilisateur) {
         UUID structureId = getRequiredTenantId();
+        requireAuthenticatedUser(utilisateur);
         return conversationRepository
                 .findAllByStructureIdAndCoachIdAndArchiveeFalseOrderByDateDerniereActiviteDesc(structureId,
-                        coach.getId())
+                        utilisateur.getId())
                 .stream()
                 .map(c -> mapToResponse(c, List.of()))
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public List<ConversationResponse> listArchivedConversations(User coach) {
+    public List<ConversationResponse> listArchivedConversations(User utilisateur) {
         UUID structureId = getRequiredTenantId();
+        requireAuthenticatedUser(utilisateur);
         return conversationRepository
-                .findAllByStructureIdAndCoachIdAndArchiveeTrue(structureId, coach.getId())
+                .findAllByStructureIdAndCoachIdAndArchiveeTrue(structureId, utilisateur.getId())
                 .stream()
                 .map(c -> mapToResponse(c, List.of()))
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public List<ConversationResponse> listRecentConversations(User coach, LocalDateTime since) {
+    public List<ConversationResponse> listRecentConversations(User utilisateur, LocalDateTime since) {
         UUID structureId = getRequiredTenantId();
+        requireAuthenticatedUser(utilisateur);
         return conversationRepository
-                .findAllByStructureIdAndCoachIdAndDateCreationAfter(structureId, coach.getId(), since)
+                .findAllByStructureIdAndCoachIdAndDateCreationAfter(structureId, utilisateur.getId(), since)
                 .stream()
                 .map(c -> mapToResponse(c, List.of()))
                 .toList();
@@ -259,13 +305,10 @@ public class ConversationIaService {
     // ── Gestion des conversations ─────────────────────────────────────────────
 
     @Transactional
-    public ConversationResponse renameConversation(UUID conversationId, String nouveauTitre, User coach) {
+    public ConversationResponse renameConversation(UUID conversationId, String nouveauTitre, User utilisateur) {
         UUID structureId = getRequiredTenantId();
 
-        Conversation conversation = conversationRepository
-                .findByIdAndStructureId(conversationId, structureId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Conversation introuvable ou accès non autorisé"));
+        Conversation conversation = findOwnedConversation(conversationId, structureId, utilisateur);
 
         conversation.setTitre(nouveauTitre);
         Conversation saved = conversationRepository.save(conversation);
@@ -277,44 +320,51 @@ public class ConversationIaService {
     }
 
     @Transactional
-    public void archiveConversation(UUID conversationId, User coach) {
+    public void archiveConversation(UUID conversationId, User utilisateur) {
         UUID structureId = getRequiredTenantId();
 
-        Conversation conversation = conversationRepository
-                .findByIdAndStructureId(conversationId, structureId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Conversation introuvable ou accès non autorisé"));
+        Conversation conversation = findOwnedConversation(conversationId, structureId, utilisateur);
 
         conversation.setArchivee(true);
         conversationRepository.save(conversation);
     }
 
     @Transactional
-    public void restaurerConversation(UUID conversationId, User coach) {
+    public void restaurerConversation(UUID conversationId, User utilisateur) {
         UUID structureId = getRequiredTenantId();
 
-        Conversation conversation = conversationRepository
-                .findByIdAndStructureId(conversationId, structureId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Conversation introuvable ou accès non autorisé"));
+        Conversation conversation = findOwnedConversation(conversationId, structureId, utilisateur);
 
         conversation.setArchivee(false);
         conversationRepository.save(conversation);
     }
 
     @Transactional
-    public void deleteConversation(UUID conversationId, User coach) {
+    public void deleteConversation(UUID conversationId, User utilisateur) {
         UUID structureId = getRequiredTenantId();
 
-        Conversation conversation = conversationRepository
-                .findByIdAndStructureId(conversationId, structureId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Conversation introuvable ou accès non autorisé"));
+        Conversation conversation = findOwnedConversation(conversationId, structureId, utilisateur);
 
         conversationRepository.delete(conversation);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private Conversation findOwnedConversation(UUID conversationId, UUID structureId, User utilisateur) {
+        requireAuthenticatedUser(utilisateur);
+        // coach_id est le propriétaire/créateur historique de la conversation,
+        // quel que soit le rôle (coach ou entrepreneur) de cet utilisateur.
+        return conversationRepository
+                .findByIdAndStructureIdAndCoachId(conversationId, structureId, utilisateur.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Conversation introuvable ou accès non autorisé"));
+    }
+
+    private void requireAuthenticatedUser(User utilisateur) {
+        if (utilisateur == null || utilisateur.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentification requise");
+        }
+    }
 
 
     private String genererTitreDepuisMessage(String contenu) {

@@ -104,7 +104,7 @@ public class HttpAiService implements AiService {
                     content,
                     model != null ? model : "unknown",
                     true,
-                    extractMapList(response, "sources"),
+                    allowlistedSources(extractMapList(response, "sources"), context),
                     extractMapList(response, "actions")
             );
 
@@ -165,6 +165,7 @@ public class HttpAiService implements AiService {
     Map<String, Object> map = new HashMap<>();
     map.put("structureId", context.getStructureId());
     map.put("structureNom", context.getStructureNom());
+    map.put("userRole", context.getUserRole());
     map.put("contextGlobal", context.isContextGlobal());
     map.put("nombreTotalEntrepreneurs", context.getNombreTotalEntrepreneurs());
     map.put("nombreTotalProjets", context.getNombreTotalProjets());
@@ -266,14 +267,55 @@ public class HttpAiService implements AiService {
             .collect(Collectors.toList());
     map.put("phases", phases);
 
+    List<Map<String, Object>> sources = context.getSources().stream()
+            .map(source -> {
+                Map<String, Object> sourceMap = new HashMap<>();
+                sourceMap.put("id", source.id);
+                sourceMap.put("title", source.title);
+                sourceMap.put("url", source.url);
+                sourceMap.put("snippet", source.snippet);
+                sourceMap.put("text", source.text);
+                return sourceMap;
+            })
+            .collect(Collectors.toList());
+    map.put("sources", sources);
+
     return map;
 }
+
+    private List<Map<String, Object>> allowlistedSources(
+            List<Map<String, Object>> citedSources, AiContext context) {
+        if (citedSources == null || citedSources.isEmpty() || context.getSources().isEmpty()) {
+            return List.of();
+        }
+        return citedSources.stream()
+                .map(citation -> citation.get("id"))
+                .filter(java.util.Objects::nonNull)
+                .map(Object::toString)
+                .distinct()
+                .map(id -> context.getSources().stream()
+                        .filter(source -> source.id.toString().equals(id))
+                        .findFirst()
+                        .map(source -> {
+                            Map<String, Object> canonical = new HashMap<>();
+                            canonical.put("id", source.id.toString());
+                            canonical.put("title", source.title);
+                            canonical.put("url", source.url);
+                            canonical.put("snippet", source.snippet);
+                            return canonical;
+                        })
+                        .orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
     private List<Map<String, Object>> convertHistoryToMap(List<Message> history) {
-        return history.stream()
+        int fromIndex = Math.max(0, history.size() - 20);
+        return history.subList(fromIndex, history.size()).stream()
                 .map(m -> {
                     Map<String, Object> msgMap = new HashMap<>();
                     msgMap.put("auteur", m.getAuteur().name());
-                    msgMap.put("contenu", m.getContenu());
+                    String content = m.getContenu() == null ? "" : m.getContenu();
+                    msgMap.put("contenu", content.length() > 8_000 ? content.substring(0, 8_000) : content);
                     return msgMap;
                 })
                 .collect(Collectors.toList());
