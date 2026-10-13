@@ -8,7 +8,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import sn.jappo.jappo_backend.abonnement.entity.Abonnement;
-import sn.jappo.jappo_backend.abonnement.entity.PlanAbonnement;
 import sn.jappo.jappo_backend.abonnement.entity.StatutAbonnement;
 import sn.jappo.jappo_backend.abonnement.repository.AbonnementRepository;
 
@@ -20,6 +19,8 @@ public class AbonnementExpirationJob {
 
     /**
      * Vérifie chaque jour à 03h00 les abonnements arrivés à expiration.
+     * Le plan souscrit est conservé : le plan effectif devient le plan par défaut
+     * (voir PlanAbonnementService#planEffectif).
      */
     @Scheduled(cron = "0 0 3 * * *")
     @Transactional
@@ -33,7 +34,6 @@ public class AbonnementExpirationJob {
 
         for (Abonnement abonnement : expires) {
 
-            abonnement.setPlan(PlanAbonnement.FREEMIUM);
             abonnement.setStatut(StatutAbonnement.EXPIRE);
 
             abonnementRepository.save(abonnement);

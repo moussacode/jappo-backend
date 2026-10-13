@@ -23,8 +23,8 @@ public class HistoriqueAbonnement {
     @JoinColumn(name = "structure_id", nullable = false)
     private Structure structure;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @ManyToOne(optional = false, fetch = FetchType.EAGER)
+    @JoinColumn(name = "plan_id", nullable = false)
     private PlanAbonnement plan;
 
     @Enumerated(EnumType.STRING)

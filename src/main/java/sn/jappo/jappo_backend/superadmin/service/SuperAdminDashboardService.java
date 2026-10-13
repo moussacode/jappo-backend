@@ -5,7 +5,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import sn.jappo.jappo_backend.abonnement.entity.Abonnement;
 import sn.jappo.jappo_backend.abonnement.entity.PlanAbonnement;
+import sn.jappo.jappo_backend.abonnement.repository.PlanAbonnementRepository;
+import sn.jappo.jappo_backend.abonnement.service.PlanAbonnementService;
+import sn.jappo.jappo_backend.superadmin.dto.RepartitionPlanResponse;
 import sn.jappo.jappo_backend.abonnement.entity.StatutTransaction;
 import sn.jappo.jappo_backend.abonnement.repository.AbonnementRepository;
 import sn.jappo.jappo_backend.abonnement.repository.TransactionPaiementRepository;
@@ -22,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +35,8 @@ public class SuperAdminDashboardService {
     private final StructureRepository structureRepository;
     private final AbonnementRepository abonnementRepository;
     private final TransactionPaiementRepository transactionPaiementRepository;
+    private final PlanAbonnementRepository planAbonnementRepository;
+    private final PlanAbonnementService planService;
 
     @Transactional(readOnly = true)
     public SuperAdminDashboardResponse getDashboard() {
@@ -74,15 +81,8 @@ public class SuperAdminDashboardService {
         // ABONNEMENTS
         // -----------------------------------------
 
-        long structuresPremium =
-                abonnementRepository.countByPlan(
-                        PlanAbonnement.PREMIUM
-                );
-
-        long structuresFreemium =
-                abonnementRepository.countByPlan(
-                        PlanAbonnement.FREEMIUM
-                );
+        List<RepartitionPlanResponse> repartitionPlans =
+                calculerRepartitionPlans(totalStructures);
 
         long abonnementsExpiration7Jours =
                 abonnementRepository.findByDateFinBetween(
@@ -143,8 +143,7 @@ public class SuperAdminDashboardService {
 
         return new SuperAdminDashboardResponse(
                 totalStructures,
-                structuresPremium,
-                structuresFreemium,
+                repartitionPlans,
                 revenuTotal,
                 revenuMois,
                 transactionsEchecRecentes,
@@ -155,6 +154,36 @@ public class SuperAdminDashboardService {
                 nouvellesStructuresMensuelles,
                 transactionsParStatut
         );
+    }
+
+    /**
+     * Compte les structures par plan effectif. Les structures sans abonnement
+     * (ou dont l'abonnement n'est plus en vigueur) relèvent du plan par défaut.
+     */
+    private List<RepartitionPlanResponse> calculerRepartitionPlans(long totalStructures) {
+
+        Map<UUID, Long> parPlan = new LinkedHashMap<>();
+        List<PlanAbonnement> plans = planAbonnementRepository.findAllByOrderByOrdreAsc();
+        plans.forEach(plan -> parPlan.put(plan.getId(), 0L));
+
+        List<Abonnement> abonnements = abonnementRepository.findAll();
+        for (Abonnement abonnement : abonnements) {
+            parPlan.merge(planService.planEffectif(abonnement).getId(), 1L, Long::sum);
+        }
+
+        long sansAbonnement = totalStructures - abonnements.size();
+        if (sansAbonnement > 0) {
+            parPlan.merge(planService.getPlanParDefaut().getId(), sansAbonnement, Long::sum);
+        }
+
+        return plans.stream()
+                .map(plan -> new RepartitionPlanResponse(
+                        plan.getId(),
+                        plan.getCode(),
+                        plan.getLibelle(),
+                        parPlan.getOrDefault(plan.getId(), 0L)
+                ))
+                .toList();
     }
 
     /**

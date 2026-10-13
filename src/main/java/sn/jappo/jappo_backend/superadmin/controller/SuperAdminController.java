@@ -1,5 +1,9 @@
 package sn.jappo.jappo_backend.superadmin.controller;
 
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.RequestBody;
+import sn.jappo.jappo_backend.superadmin.dto.ChangerPlanRequest;
+
 import java.util.List;
 
 import sn.jappo.jappo_backend.superadmin.dto.SuperAdminHistoriqueAbonnementResponse;
@@ -83,13 +87,12 @@ public void suspendreStructure(@PathVariable UUID id) {
     superAdminStructureService.suspendreStructure(id);
 }
 
-@PatchMapping("/structures/{id}/freemium")
-public void forcerFreemium(@PathVariable UUID id) {
-    superAdminStructureService.forcerFreemium(id);
-}
-@PatchMapping("/structures/{id}/premium")
-public void activerPremium(@PathVariable UUID id) {
-    superAdminStructureService.activerPremium(id);
+@PatchMapping("/structures/{id}/plan")
+public void changerPlan(
+        @PathVariable UUID id,
+        @Valid @RequestBody ChangerPlanRequest request
+) {
+    superAdminStructureService.changerPlan(id, request.planId());
 }
 
 @GetMapping("/structures/{id}/abonnement/historique")

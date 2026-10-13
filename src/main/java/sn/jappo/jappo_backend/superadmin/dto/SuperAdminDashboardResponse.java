@@ -3,8 +3,7 @@ import java.util.List;
 import java.util.Map;
 public record SuperAdminDashboardResponse(
         long totalStructures,
-        long structuresPremium,
-        long structuresFreemium,
+        List<RepartitionPlanResponse> repartitionPlans,
 
         long revenuTotal,
         long revenuMois,

@@ -10,9 +10,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import sn.jappo.jappo_backend.abonnement.dto.ConfirmationPaiementResponse;
-import sn.jappo.jappo_backend.abonnement.entity.Abonnement;
-import sn.jappo.jappo_backend.abonnement.entity.TransactionPaiement;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.RequestBody;
+import sn.jappo.jappo_backend.abonnement.dto.AbonnementResponse;
+import sn.jappo.jappo_backend.abonnement.dto.InitierPaiementRequest;
 import sn.jappo.jappo_backend.abonnement.service.AbonnementService;
 
 import org.springframework.web.bind.annotation.RequestParam;
@@ -41,15 +42,17 @@ public PaydunyaClient.PaymentStatusResult testerPaiement(
 }
 
     @GetMapping
-    public Abonnement getAbonnement(@PathVariable UUID structureId) {
-        return abonnementService.getOuCreerAbonnement(structureId);
+    public AbonnementResponse getAbonnement(@PathVariable UUID structureId) {
+        return abonnementService.getAbonnement(structureId);
     }
 
 
     @PostMapping("/upgrade")
     @PreAuthorize("hasAuthority('ADMIN_STRUCTURE')")
-    public Map<String, String> upgrader(@PathVariable UUID structureId) {
-        String redirectUrl = abonnementService.initierUpgradePremium(structureId);
+    public Map<String, String> upgrader(
+            @PathVariable UUID structureId,
+            @Valid @RequestBody InitierPaiementRequest request) {
+        String redirectUrl = abonnementService.initierPaiement(structureId, request.planId());
         return Map.of("redirectUrl", redirectUrl);
     }
 }

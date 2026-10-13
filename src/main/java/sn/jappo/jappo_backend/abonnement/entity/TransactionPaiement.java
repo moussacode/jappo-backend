@@ -28,14 +28,14 @@ public class TransactionPaiement {
 
     private String tokenPaiement; // "token" renvoyé 
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private PlanAbonnement planVise; // PREMIUM (ce que la transaction doit débloquer)
+    @ManyToOne(optional = false, fetch = FetchType.EAGER)
+    @JoinColumn(name = "plan_vise_id", nullable = false)
+    private PlanAbonnement planVise; // plan que la transaction doit activer
 
     @Column(nullable = false)
     private long montant; // en FCFA
 
-    private String devise = "XOF";
+    private String devise; // copiée depuis le plan au moment de l'initiation
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

@@ -1,6 +1,8 @@
 package sn.jappo.jappo_backend.abonnement.service;
 
+import sn.jappo.jappo_backend.abonnement.dto.AbonnementResponse;
 import sn.jappo.jappo_backend.abonnement.dto.ConfirmationPaiementResponse;
+import sn.jappo.jappo_backend.abonnement.dto.PlanAbonnementResponse;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,21 +33,22 @@ public class AbonnementService {
         private final StructureRepository structureRepository;
         private final PaydunyaClient paydunyaClient;
         private final MembreStructureRepository membreStructureRepository;
-
-        private static final long PRIX_PREMIUM = 90_000L; // ou @Value depuis app.abonnement.premium.prix
+        private final PlanAbonnementService planService;
 
         public AbonnementService(
                         AbonnementRepository abonnementRepository,
                         TransactionPaiementRepository transactionRepository,
                         StructureRepository structureRepository,
                         PaydunyaClient paydunyaClient,
-                        MembreStructureRepository membreStructureRepository) {
+                        MembreStructureRepository membreStructureRepository,
+                        PlanAbonnementService planService) {
 
                 this.abonnementRepository = abonnementRepository;
                 this.transactionRepository = transactionRepository;
                 this.structureRepository = structureRepository;
                 this.paydunyaClient = paydunyaClient;
                 this.membreStructureRepository = membreStructureRepository;
+                this.planService = planService;
         }
 
         @Transactional
@@ -57,17 +60,43 @@ public class AbonnementService {
                                                                         "Structure introuvable"));
                                         Abonnement a = new Abonnement();
                                         a.setStructure(structure);
-                                        a.setPlan(PlanAbonnement.FREEMIUM);
+                                        PlanAbonnement planParDefaut = planService.getPlanParDefaut();
+                                        a.setPlan(planParDefaut);
                                         a.setStatut(StatutAbonnement.ACTIF);
+                                        a.setDateDebut(LocalDateTime.now());
+                                        a.setDateFin(planService.calculerDateFin(planParDefaut, a.getDateDebut()));
                                         return abonnementRepository.save(a);
                                 });
         }
 
         @Transactional
-        public String initierUpgradePremium(UUID structureId) {
+        public AbonnementResponse getAbonnement(UUID structureId) {
+                Abonnement abonnement = getOuCreerAbonnement(structureId);
+                return new AbonnementResponse(
+                                abonnement.getId(),
+                                PlanAbonnementResponse.from(abonnement.getPlan()),
+                                PlanAbonnementResponse.from(planService.planEffectif(abonnement)),
+                                abonnement.getStatut().name(),
+                                abonnement.getDateDebut(),
+                                abonnement.getDateFin(),
+                                abonnement.isRenouvellementAuto(),
+                                abonnement.getDateCreation());
+        }
+
+        @Transactional
+        public String initierPaiement(UUID structureId, UUID planId) {
 
                 Structure structure = structureRepository.findById(structureId)
                                 .orElseThrow(() -> new IllegalArgumentException("Structure introuvable"));
+
+                // Le prix vient toujours du plan en base, jamais du client.
+                PlanAbonnement plan = planService.getPlan(planId);
+                if (!plan.isActif()) {
+                        throw new IllegalArgumentException("Ce plan n'est plus proposé");
+                }
+                if (plan.estGratuit()) {
+                        throw new IllegalArgumentException("Ce plan est gratuit : aucun paiement n'est nécessaire");
+                }
 
                 String refCommand = "JAPPO-" + structureId + "-" + System.currentTimeMillis();
 
@@ -75,15 +104,16 @@ public class AbonnementService {
 
                 tx.setStructure(structure);
                 tx.setRefCommand(refCommand);
-                tx.setPlanVise(PlanAbonnement.PREMIUM);
-                tx.setMontant(PRIX_PREMIUM);
+                tx.setPlanVise(plan);
+                tx.setMontant(plan.getPrix());
+                tx.setDevise(plan.getDevise());
                 tx.setStatut(StatutTransaction.EN_ATTENTE);
 
                 transactionRepository.save(tx);
 
                 PaydunyaClient.InitiationResult result = paydunyaClient.initierPaiement(
-                                "Abonnement Premium JAPPO",
-                                PRIX_PREMIUM,
+                                "Abonnement " + plan.getLibelle() + " JAPPO",
+                                plan.getPrix(),
                                 refCommand,
                                 "",
                                 "",
@@ -140,7 +170,7 @@ public class AbonnementService {
                         return new ConfirmationPaiementResponse(
                                         "Paiement déjà confirmé",
                                         transaction.getStatut(),
-                                        transaction.getPlanVise(),
+                                        PlanAbonnementResponse.from(transaction.getPlanVise()),
                                         transaction.getMontant(),
                                         transaction.getDateConfirmation());
                 }
@@ -175,16 +205,17 @@ public class AbonnementService {
 
                 transactionRepository.save(transaction);
 
-                // 2. Activer le Premium pendant 1 an
+                // 2. Activer le plan payé pour la durée qu'il définit
                 LocalDateTime maintenant = LocalDateTime.now();
 
                 Abonnement abonnement = getOuCreerAbonnement(
                                 transaction.getStructure().getId());
 
-                abonnement.setPlan(PlanAbonnement.PREMIUM);
+                PlanAbonnement planVise = transaction.getPlanVise();
+                abonnement.setPlan(planVise);
                 abonnement.setStatut(StatutAbonnement.ACTIF);
                 abonnement.setDateDebut(maintenant);
-                abonnement.setDateFin(maintenant.plusYears(1));
+                abonnement.setDateFin(planService.calculerDateFin(planVise, maintenant));
                 abonnement.setRenouvellementAuto(false);
 
                 abonnementRepository.save(abonnement);
@@ -192,7 +223,7 @@ public class AbonnementService {
                 return new ConfirmationPaiementResponse(
                                 "Paiement confirmé",
                                 transaction.getStatut(),
-                                transaction.getPlanVise(),
+                                PlanAbonnementResponse.from(transaction.getPlanVise()),
                                 transaction.getMontant(),
                                 transaction.getDateConfirmation());
         }

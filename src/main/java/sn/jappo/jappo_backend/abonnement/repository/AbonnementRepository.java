@@ -8,7 +8,6 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import sn.jappo.jappo_backend.abonnement.entity.Abonnement;
-import sn.jappo.jappo_backend.abonnement.entity.PlanAbonnement;
 import sn.jappo.jappo_backend.abonnement.entity.StatutAbonnement;
 
 public interface AbonnementRepository
@@ -21,18 +20,12 @@ public interface AbonnementRepository
             LocalDateTime date
     );
 
-    long countByPlan(PlanAbonnement plan);
 
     long countByStatut(StatutAbonnement statut);
 
-    List<Abonnement> findByPlan(PlanAbonnement plan);
 
     List<Abonnement> findByStatut(StatutAbonnement statut);
 
-    List<Abonnement> findByPlanAndStatut(
-            PlanAbonnement plan,
-            StatutAbonnement statut
-    );
 
     List<Abonnement> findByDateFinBetween(
             LocalDateTime debut,

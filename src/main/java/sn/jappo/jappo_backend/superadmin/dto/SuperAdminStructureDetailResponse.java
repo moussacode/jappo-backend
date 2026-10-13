@@ -1,5 +1,7 @@
 package sn.jappo.jappo_backend.superadmin.dto;
 
+import sn.jappo.jappo_backend.abonnement.dto.PlanAbonnementResponse;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.List;
@@ -42,7 +44,8 @@ public record SuperAdminStructureDetailResponse(
 
     public record AbonnementResponse(
             UUID id,
-            String plan,
+            PlanAbonnementResponse plan,
+            PlanAbonnementResponse planEffectif,
             String statut,
             LocalDateTime dateDebut,
             LocalDateTime dateFin,

@@ -5,7 +5,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
 import sn.jappo.jappo_backend.structure.entity.StatutStructure;
+import sn.jappo.jappo_backend.abonnement.dto.PlanAbonnementResponse;
 import sn.jappo.jappo_backend.abonnement.entity.PlanAbonnement;
+import sn.jappo.jappo_backend.abonnement.service.PlanAbonnementService;
 import sn.jappo.jappo_backend.abonnement.entity.StatutAbonnement;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -49,6 +51,7 @@ public class SuperAdminStructureService {
     private final AbonnementRepository abonnementRepository;
     private final TransactionPaiementRepository transactionPaiementRepository;
     private final HistoriqueAbonnementRepository historiqueAbonnementRepository;
+    private final PlanAbonnementService planService;
 
     @Transactional(readOnly = true)
     public List<SuperAdminStructureListResponse> getAllStructures() {
@@ -67,9 +70,8 @@ public class SuperAdminStructureService {
                 .findByStructureId(structure.getId())
                 .orElse(null);
 
-        String plan = abonnement != null
-                ? abonnement.getPlan().name()
-                : "FREEMIUM";
+        PlanAbonnementResponse planEffectif =
+                PlanAbonnementResponse.from(planService.planEffectif(abonnement));
 
         String statutStructure = structure.getStatut().name();
 
@@ -94,7 +96,7 @@ String statutAbonnement = abonnement != null
                 structure.getId(),
                 structure.getNom(),
                 structure.getSlug(),
-                plan,
+                planEffectif,
                 statutStructure,
         statutAbonnement,
                 structure.getDateCreation(),
@@ -157,7 +159,8 @@ List<MembreStructure> membres =
                     ? null
                     : new SuperAdminStructureDetailResponse.AbonnementResponse(
                             abonnement.getId(),
-                            abonnement.getPlan().name(),
+                            PlanAbonnementResponse.from(abonnement.getPlan()),
+                            PlanAbonnementResponse.from(planService.planEffectif(abonnement)),
                             abonnement.getStatut().name(),
                             abonnement.getDateDebut(),
                             abonnement.getDateFin(),
@@ -215,7 +218,7 @@ public List<SuperAdminTransactionResponse> getStructureTransactions(
                     transaction.getTelephoneClient(),
                     transaction.getRefCommand(),
                     transaction.getTokenPaiement(),
-                    transaction.getPlanVise().name(),
+                    PlanAbonnementResponse.from(transaction.getPlanVise()),
                     transaction.getDateCreation(),
                     transaction.getDateConfirmation(),
                     transaction.getPayloadIpnBrut()
@@ -247,7 +250,7 @@ public List<SuperAdminTransactionResponse> getAllTransactions() {
                     transaction.getTelephoneClient(),
                     transaction.getRefCommand(),
                     transaction.getTokenPaiement(),
-                    transaction.getPlanVise().name(),
+                    PlanAbonnementResponse.from(transaction.getPlanVise()),
                     transaction.getDateCreation(),
                     transaction.getDateConfirmation(),
                     transaction.getPayloadIpnBrut()
@@ -266,7 +269,8 @@ public List<SuperAdminAbonnementResponse> getAllAbonnements() {
                     abonnement.getId(),
                     abonnement.getStructure().getId(),
                     abonnement.getStructure().getNom(),
-                    abonnement.getPlan().name(),
+                    PlanAbonnementResponse.from(abonnement.getPlan()),
+                    PlanAbonnementResponse.from(planService.planEffectif(abonnement)),
                     abonnement.getStatut().name(),
                     abonnement.getDateDebut(),
                     abonnement.getDateFin(),
@@ -299,8 +303,12 @@ public void suspendreStructure(UUID structureId) {
 }
 
 
+/**
+ * Change le plan d'une structure (action du SUPER_ADMIN) :
+ * le plan s'applique immédiatement, pour la durée qu'il définit.
+ */
 @Transactional
-public void forcerFreemium(UUID structureId) {
+public void changerPlan(UUID structureId, UUID planId) {
 
     Structure structure = structureRepository.findById(structureId)
             .orElseThrow(() -> new ResponseStatusException(
@@ -308,62 +316,36 @@ public void forcerFreemium(UUID structureId) {
                     "Structure introuvable"
             ));
 
-    Abonnement abonnement = abonnementRepository
-            .findByStructureId(structureId)
-            .orElseThrow(() -> new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Abonnement introuvable"
-            ));
+    PlanAbonnement plan = planService.getPlan(planId);
 
-enregistrerHistorique(
-            structure,
-            abonnement,
-            SourceAbonnement.ADMINISTRATION
-    );
-
-
-    abonnement.setPlan(PlanAbonnement.FREEMIUM);
-    abonnement.setStatut(StatutAbonnement.ACTIF);
-    abonnement.setDateDebut(null);
-    abonnement.setDateFin(null);
-    abonnement.setRenouvellementAuto(false);
-
-    abonnementRepository.save(abonnement);
-}
-
-
-
-@Transactional
-public void activerPremium(UUID structureId) {
-
-    Structure structure = structureRepository.findById(structureId)
-            .orElseThrow(() -> new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Structure introuvable"
-            ));
+    if (!plan.isActif()) {
+        throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Ce plan est désactivé : activez-le avant de l'attribuer."
+        );
+    }
 
     Abonnement abonnement = abonnementRepository
             .findByStructureId(structureId)
-            .orElseThrow(() -> new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Abonnement introuvable"
-            ));
+            .orElse(null);
 
-
-             enregistrerHistorique(
-            structure,
-            abonnement,
-            SourceAbonnement.ADMINISTRATION
-    );
+    if (abonnement == null) {
+        abonnement = new Abonnement();
+        abonnement.setStructure(structure);
+    } else {
+        enregistrerHistorique(
+                structure,
+                abonnement,
+                SourceAbonnement.ADMINISTRATION
+        );
+    }
 
     LocalDateTime maintenant = LocalDateTime.now();
 
-    
-
-    abonnement.setPlan(PlanAbonnement.PREMIUM);
+    abonnement.setPlan(plan);
     abonnement.setStatut(StatutAbonnement.ACTIF);
     abonnement.setDateDebut(maintenant);
-    abonnement.setDateFin(maintenant.plusYears(1));
+    abonnement.setDateFin(planService.calculerDateFin(plan, maintenant));
     abonnement.setRenouvellementAuto(false);
 
     abonnementRepository.save(abonnement);
@@ -409,7 +391,7 @@ public List<SuperAdminHistoriqueAbonnementResponse> getHistoriqueAbonnement(
             .map(historique ->
                     new SuperAdminHistoriqueAbonnementResponse(
                             historique.getId(),
-                            historique.getPlan().name(),
+                            PlanAbonnementResponse.from(historique.getPlan()),
                             historique.getStatut().name(),
                             historique.getDateDebut(),
                             historique.getDateFin(),

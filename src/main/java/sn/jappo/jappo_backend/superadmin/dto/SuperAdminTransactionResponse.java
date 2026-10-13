@@ -1,5 +1,7 @@
 package sn.jappo.jappo_backend.superadmin.dto;
 
+import sn.jappo.jappo_backend.abonnement.dto.PlanAbonnementResponse;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -14,7 +16,7 @@ public record SuperAdminTransactionResponse(
         String telephoneClient,
         String refCommand,
         String tokenPaiement,
-        String planVise,
+        PlanAbonnementResponse planVise,
         LocalDateTime dateCreation,
         LocalDateTime dateConfirmation,
         String payloadIpnBrut

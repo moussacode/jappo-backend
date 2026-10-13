@@ -23,9 +23,10 @@ public class Abonnement {
     @JoinColumn(name = "structure_id", nullable = false, unique = true)
     private Structure structure;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private PlanAbonnement plan = PlanAbonnement.FREEMIUM;
+    /** Plan souscrit. Il n'est pas écrasé à l'expiration : voir AbonnementService#planEffectif. */
+    @ManyToOne(optional = false, fetch = FetchType.EAGER)
+    @JoinColumn(name = "plan_id", nullable = false)
+    private PlanAbonnement plan;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -33,7 +34,7 @@ public class Abonnement {
 
     private LocalDateTime dateDebut;
 
-    private LocalDateTime dateFin; // null pour FREEMIUM (illimité dans le temps)
+    private LocalDateTime dateFin; // null = sans fin (plan sans durée)
 
     private boolean renouvellementAuto = false;
 
