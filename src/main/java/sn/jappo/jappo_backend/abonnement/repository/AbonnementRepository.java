@@ -23,6 +23,8 @@ public interface AbonnementRepository
 
     long countByStatut(StatutAbonnement statut);
 
+    boolean existsByPlanId(UUID planId);
+
 
     List<Abonnement> findByStatut(StatutAbonnement statut);
 

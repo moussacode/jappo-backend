@@ -18,6 +18,8 @@ public interface TransactionPaiementRepository
 
     Optional<TransactionPaiement> findByRefCommand(String refCommand);
 
+    boolean existsByPlanViseId(UUID planId);
+
     Optional<TransactionPaiement> findByTokenPaiement(String tokenPaiement);
 
     Page<TransactionPaiement> findByStructureId(

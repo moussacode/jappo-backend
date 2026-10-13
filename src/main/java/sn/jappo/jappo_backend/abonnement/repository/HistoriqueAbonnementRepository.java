@@ -9,6 +9,8 @@ import java.util.UUID;
 public interface HistoriqueAbonnementRepository
         extends JpaRepository<HistoriqueAbonnement, UUID> {
 
+    boolean existsByPlanId(UUID planId);
+
     List<HistoriqueAbonnement> findAllByStructureIdOrderByDateCreationDesc(
             UUID structureId
     );
