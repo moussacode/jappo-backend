@@ -7,7 +7,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-import sn.jappo.jappo_backend.abonnement.service.PlanLimiteService;
+import sn.jappo.jappo_backend.abonnement.service.QuotaService;
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
 import sn.jappo.jappo_backend.ia.action.AiActionService;
 import sn.jappo.jappo_backend.ia.context.AiContext;
@@ -46,7 +46,7 @@ class ConversationOwnershipTest {
     @Mock private AiContextBuilder aiContextBuilder;
     @Mock private AiService aiService;
     @Mock private AiActionService aiActionService;
-    @Mock private PlanLimiteService planLimiteService;
+    @Mock private QuotaService quotaService;
 
     @AfterEach
     void clearTenant() {
@@ -65,7 +65,7 @@ class ConversationOwnershipTest {
 
         ConversationIaService service = new ConversationIaService(
                 conversationRepository, messageRepository, structureRepository, userRepository,
-                aiContextBuilder, aiService, aiActionService, planLimiteService);
+                aiContextBuilder, aiService, aiActionService, quotaService);
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> service.archiveConversation(conversationId, otherUser));
 
@@ -97,7 +97,7 @@ class ConversationOwnershipTest {
 
         ConversationIaService service = new ConversationIaService(
                 conversationRepository, messageRepository, structureRepository, userRepository,
-                aiContextBuilder, aiService, aiActionService, planLimiteService);
+                aiContextBuilder, aiService, aiActionService, quotaService);
         var response = service.getConversation(conversationId, entrepreneur);
 
         assertNotNull(response);
@@ -135,7 +135,7 @@ class ConversationOwnershipTest {
 
         ConversationIaService service = new ConversationIaService(
                 conversationRepository, messageRepository, structureRepository, userRepository,
-                aiContextBuilder, aiService, aiActionService, planLimiteService);
+                aiContextBuilder, aiService, aiActionService, quotaService);
         var messages = service.sendMessage(conversationId, entrepreneur, new SendMessageRequest("Question"));
 
         assertEquals(2, messages.size());

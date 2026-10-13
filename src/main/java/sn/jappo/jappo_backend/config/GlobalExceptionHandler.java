@@ -12,6 +12,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
+import sn.jappo.jappo_backend.abonnement.service.QuotaDepasseException;
 import sn.jappo.jappo_backend.meeting.exception.MeetingException;
 import sn.jappo.jappo_backend.projet.exception.PromotionBloqueeException;
 
@@ -30,6 +31,18 @@ public class GlobalExceptionHandler {
         body.put("message", exception.getMessage());
         body.put("missionsNonValidees", exception.getMissionsNonValidees());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    /** Limite du plan d'abonnement : le frontend se base sur {@code code}, jamais sur le message. */
+    @ExceptionHandler(QuotaDepasseException.class)
+    public ResponseEntity<Map<String, Object>> handleQuotaDepasse(QuotaDepasseException exception) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("code", exception.getCode());
+        body.put("message", exception.getMessage());
+        body.put("consomme", exception.getConsomme());
+        body.put("limite", exception.getLimite());
+        return ResponseEntity.status(exception.getStatus()).body(body);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -1,7 +1,7 @@
 package sn.jappo.jappo_backend.cohorte.service;
 
 
-import sn.jappo.jappo_backend.abonnement.service.PlanLimiteService;
+import sn.jappo.jappo_backend.abonnement.service.QuotaService;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -60,7 +60,7 @@ public class CohorteService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
-    private final PlanLimiteService planLimiteService;
+    private final QuotaService quotaService;
 
     public CohorteService(
             CohorteRepository cohorteRepository,
@@ -74,7 +74,7 @@ public class CohorteService {
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             EmailService emailService,
-            PlanLimiteService planLimiteService
+            QuotaService quotaService
     ) {
         this.cohorteRepository = cohorteRepository;
         this.structureRepository = structureRepository;
@@ -87,13 +87,13 @@ public class CohorteService {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
-        this.planLimiteService = planLimiteService;
+        this.quotaService = quotaService;
     }
 
     @Transactional
     public CohorteResponse createCohorte(CreateCohorteRequest request) {
         UUID activeStructureId = getRequiredTenantId();
-        planLimiteService.verifierCreationCohorte(activeStructureId);
+        quotaService.verifierCreationCohorte(activeStructureId);
 
         Structure structure = structureRepository.findById(activeStructureId)
                 .orElseThrow(() -> new ResponseStatusException(

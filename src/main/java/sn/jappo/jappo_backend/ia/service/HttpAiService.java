@@ -105,7 +105,8 @@ public class HttpAiService implements AiService {
                     model != null ? model : "unknown",
                     true,
                     allowlistedSources(extractMapList(response, "sources"), context),
-                    extractMapList(response, "actions")
+                    extractMapList(response, "actions"),
+                    extractUsage(response)
             );
 
         } catch (HttpClientErrorException.Unauthorized e) {
@@ -147,6 +148,23 @@ public class HttpAiService implements AiService {
             log.error("[HttpAiService] Erreur totalement inattendue lors de l'appel à FastAPI : {}", e.getMessage(), e);
             return AiService.AiResponse.failure(MESSAGE_INDISPONIBLE);
         }
+    }
+
+    /** Lit l'usage renvoyé par l'orchestrateur ; null s'il est absent ou invalide. */
+    private AiService.AiUsage extractUsage(Map<String, Object> response) {
+        if (!(response.get("usage") instanceof Map<?, ?> usage)) {
+            log.warn("[HttpAiService] Réponse sans usage : la consommation de tokens ne sera pas comptée");
+            return null;
+        }
+        return new AiService.AiUsage(
+                tokenCount(usage.get("prompt_tokens")),
+                tokenCount(usage.get("completion_tokens")));
+    }
+
+    private int tokenCount(Object value) {
+        return value instanceof Number number && number.longValue() > 0
+                ? (int) Math.min(number.longValue(), Integer.MAX_VALUE)
+                : 0;
     }
 
     @SuppressWarnings("unchecked")

@@ -43,6 +43,9 @@ public interface CohorteRepository extends JpaRepository<Cohorte, UUID> {
         StatutCohorte statut
     );
 
+    /** Cohortes d'une structure dans l'un des statuts donnés (quota de cohortes du plan). */
+    long countByStructureIdAndStatutIn(UUID structureId, java.util.Collection<StatutCohorte> statuts);
+
     /** Cohortes d'une structure assignées à un coach spécifique. */
     @Query("SELECT c FROM Cohorte c JOIN c.coachs coach WHERE c.structure.id = :structureId AND coach.id = :coachId")
     List<Cohorte> findAllByStructureIdAndCoachId(@Param("structureId") UUID structureId, @Param("coachId") UUID coachId);

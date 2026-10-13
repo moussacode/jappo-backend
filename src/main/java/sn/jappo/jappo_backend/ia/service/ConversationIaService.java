@@ -1,7 +1,7 @@
 package sn.jappo.jappo_backend.ia.service;
 
 
-import sn.jappo.jappo_backend.abonnement.service.PlanLimiteService;
+import sn.jappo.jappo_backend.abonnement.service.QuotaService;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -59,7 +59,7 @@ public class ConversationIaService {
     private final AiService aiService;
     private final AiActionService aiActionService;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final PlanLimiteService planLimiteService;
+    private final QuotaService quotaService;
 
     public ConversationIaService(
         ConversationRepository conversationRepository,
@@ -69,7 +69,7 @@ public class ConversationIaService {
         AiContextBuilder aiContextBuilder,
         AiService aiService,
         AiActionService aiActionService,
-        PlanLimiteService planLimiteService) {
+        QuotaService quotaService) {
 
     this.conversationRepository = conversationRepository;
     this.messageRepository = messageRepository;
@@ -78,7 +78,7 @@ public class ConversationIaService {
     this.aiContextBuilder = aiContextBuilder;
     this.aiService = aiService;
     this.aiActionService = aiActionService;
-    this.planLimiteService = planLimiteService;
+    this.quotaService = quotaService;
 }
 
     // ── Création d'une conversation ──────────────────────────────────────────
@@ -88,7 +88,7 @@ public class ConversationIaService {
         UUID structureId = getRequiredTenantId();
 
         requireAuthenticatedUser(utilisateur);
-        planLimiteService.verifierAssistantIA(structureId);
+        quotaService.verifierAccesIA(structureId, utilisateur);
 
         Structure structure = structureRepository.findById(structureId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Structure introuvable"));
@@ -143,6 +143,10 @@ public class ConversationIaService {
         // 1. Charger et vérifier la conversation (tenant-safe)
         Conversation conversation = findOwnedConversation(conversationId, structureId, utilisateur);
 
+        // Quota avant tout appel IA : rôle autorisé par le plan et pot de tokens non épuisé.
+        // La lecture des conversations existantes, elle, reste toujours possible.
+        RoleMembreStructure roleUtilisateur = quotaService.verifierAccesIA(structureId, utilisateur);
+
         // 2. Enregistrer le message COACH
         Message messageCoach = new Message();
         messageCoach.setConversation(conversation);
@@ -179,6 +183,9 @@ public class ConversationIaService {
         messageAssistant.setSourcesJson(toJson(secureCitationUrls(aiContext, conversationId, reponse.sources())));
 
         Message savedAssistant = messageRepository.save(messageAssistant);
+
+        // Usage réel de la réponse (un appel échoué ne consomme rien).
+        quotaService.enregistrerUsage(structureId, utilisateur.getId(), roleUtilisateur, conversationId, reponse);
 
         // 8. Enregistrer les actions IA et récupérer les actions avec leurs IDs BDD
         List<java.util.Map<String, Object>> actionsEnregistrees = List.of();

@@ -24,7 +24,7 @@ import sn.jappo.jappo_backend.programme.repository.ProgrammeRepository;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
 import sn.jappo.jappo_backend.config.tenant.TenantContext;
-import sn.jappo.jappo_backend.abonnement.service.PlanLimiteService;
+import sn.jappo.jappo_backend.abonnement.service.QuotaService;
 
 import java.time.LocalDate;
 import java.util.Optional;
@@ -58,7 +58,7 @@ public class CohorteServiceTest {
     private ParcoursPhaseRepository parcoursPhaseRepository;
 
     @Mock
-    private PlanLimiteService planLimiteService;
+    private QuotaService quotaService;
 
     @InjectMocks
     private CohorteService cohorteService;
@@ -100,7 +100,7 @@ public class CohorteServiceTest {
         when(parcoursRepository.findByIdAndStructureId(parcoursId, structureId)).thenReturn(Optional.of(parcours));
         when(phaseRepository.findById(phaseId)).thenReturn(Optional.of(phase));
         when(parcoursPhaseRepository.findByParcours_IdAndPhase_Id(parcoursId, phaseId)).thenReturn(Optional.of(parcoursPhase));
-        doNothing().when(planLimiteService).verifierCreationCohorte(any());
+        doNothing().when(quotaService).verifierCreationCohorte(any());
 
         CreateCohorteRequest request = new CreateCohorteRequest(
                 "Cohorte Test",
@@ -143,7 +143,7 @@ public class CohorteServiceTest {
 
         when(structureRepository.findById(structureId)).thenReturn(Optional.of(structure));
         when(programmeRepository.findByIdAndStructureId(programmeId, structureId)).thenReturn(Optional.empty());
-        doNothing().when(planLimiteService).verifierCreationCohorte(any());
+        doNothing().when(quotaService).verifierCreationCohorte(any());
 
         CreateCohorteRequest request = new CreateCohorteRequest(
                 "Cohorte Test",

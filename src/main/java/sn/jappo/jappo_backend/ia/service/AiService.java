@@ -28,23 +28,29 @@ public interface AiService {
      * @param sources    sources citées par l'IA pour construire sa réponse (peut être vide).
      * @param actions    propositions d'action structurées (ACTION_PROPOSAL) — jamais exécutées
      *                   directement, seulement transmises pour confirmation humaine (voir AiActionService).
+     * @param usage      tokens réellement facturés par le fournisseur ; null si inconnus ou en échec.
      */
     record AiResponse(
             String content,
             String model,
             boolean success,
             List<Map<String, Object>> sources,
-            List<Map<String, Object>> actions
+            List<Map<String, Object>> actions,
+            AiUsage usage
     ) {
         /** Raccourci pour une réponse réussie sans sources ni actions (cas FakeAiService). */
         public static AiResponse ok(String content, String model) {
-            return new AiResponse(content, model, true, List.of(), List.of());
+            return new AiResponse(content, model, true, List.of(), List.of(), null);
         }
 
         /** Raccourci pour un échec — content doit déjà être un message adapté au coach. */
         public static AiResponse failure(String content) {
-            return new AiResponse(content, "unavailable", false, List.of(), List.of());
+            return new AiResponse(content, "unavailable", false, List.of(), List.of(), null);
         }
+    }
+
+    /** Usage réel d'un appel au LLM (prompt_tokens / completion_tokens d'OpenRouter). */
+    record AiUsage(int tokensEntree, int tokensSortie) {
     }
 
     /**
