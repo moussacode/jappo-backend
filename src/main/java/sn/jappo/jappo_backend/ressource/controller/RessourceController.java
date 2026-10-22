@@ -51,6 +51,9 @@ import sn.jappo.jappo_backend.ressource.service.RessourceService;
  */
 @RestController
 @RequestMapping("/api/ressources")
+// Gestion de la bibliothèque : réservée aux encadrants. Les entrepreneurs passent par
+// /api/entrepreneur/ressources, filtré selon leur projet, cohorte, parcours, phase et missions.
+@PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
 public class RessourceController {
 
     private final RessourceService ressourceService;

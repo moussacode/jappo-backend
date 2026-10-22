@@ -49,6 +49,7 @@ public class SuiviProjetService {
     private final LivrableRepository livrableRepository;
     private final MeetingRepository meetingRepository;
     private final ProgrammeRepository programmeRepository;
+    private final ProjetAccessGuard projetAccessGuard;
     private final ParcoursRepository parcoursRepository;
     private final PhaseRepository phaseRepository;
     private final CohorteRepository cohorteRepository;
@@ -71,6 +72,8 @@ public class SuiviProjetService {
         if (!projet.getStructure().getId().equals(structureId)) {
             throw new IllegalArgumentException("Projet introuvable dans votre structure");
         }
+
+        projetAccessGuard.verifierLecture(projet);
 
         // Récupérer la progression active
         Optional<Progression> progressionOpt = progressionRepository
@@ -111,10 +114,11 @@ public class SuiviProjetService {
         List<MissionProjet> missionsEnCours = missions.stream()
                 .filter(m -> m.getStatut() == StatutMission.EN_COURS)
                 .collect(Collectors.toList());
-        List<MissionProjet> missionsEnRetard = missionsEnCours.stream()
-                .filter(m -> m.getMissionCohorte() != null)
-                .filter(m -> m.getMissionCohorte().getDateEcheance() != null
-                        && m.getMissionCohorte().getDateEcheance().isBefore(java.time.LocalDate.now()))
+        // Toute mission non validée à échéance dépassée (pas seulement EN_COURS) :
+        // aligné sur le tableau de bord et l'affichage des missions.
+        java.time.LocalDate aujourdhui = java.time.LocalDate.now();
+        List<MissionProjet> missionsEnRetard = missions.stream()
+                .filter(m -> m.estEnRetard(aujourdhui))
                 .collect(Collectors.toList());
         long missionsTerminees = missions.stream()
                 .filter(m -> m.getStatut() == StatutMission.VALIDE)

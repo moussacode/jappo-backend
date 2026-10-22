@@ -145,6 +145,7 @@ public class PhaseService {
 
         phase.setNom(nom);
         phase.setDescription(request.getDescription());
+        phase.setStade(request.getStade());
         phase.setStructure(structure);
         phase.setArchive(false);
 
@@ -204,6 +205,10 @@ public class PhaseService {
             phase.setDescription(
                     request.getDescription()
             );
+        }
+
+        if (request.getStade() != null) {
+            phase.setStade(request.getStade());
         }
 
         return mapToResponse(
@@ -274,6 +279,7 @@ public class PhaseService {
         response.setId(phase.getId());
         response.setNom(phase.getNom());
         response.setDescription(phase.getDescription());
+        response.setStade(phase.getStade());
 
         /*
          * IMPORTANT :

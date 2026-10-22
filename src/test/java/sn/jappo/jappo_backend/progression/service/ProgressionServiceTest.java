@@ -34,6 +34,7 @@ import sn.jappo.jappo_backend.progression.exception.InvalidProgressionTransition
 import sn.jappo.jappo_backend.progression.repository.HistoriqueProgressionRepository;
 import sn.jappo.jappo_backend.progression.repository.ProgressionRepository;
 import sn.jappo.jappo_backend.projet.entity.Projet;
+import sn.jappo.jappo_backend.projet.service.ProjetAccessGuard;
 import sn.jappo.jappo_backend.projet.repository.ProjetRepository;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.user.entity.User;
@@ -88,6 +89,9 @@ public class ProgressionServiceTest {
 
         @Mock
         private LivrableAttenduRepository livrableAttenduRepository;
+
+    @Mock
+    private ProjetAccessGuard projetAccessGuard;
 
     @InjectMocks
     private ProgressionService progressionService;

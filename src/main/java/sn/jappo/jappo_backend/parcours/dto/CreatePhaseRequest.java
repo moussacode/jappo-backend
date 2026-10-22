@@ -1,5 +1,7 @@
 package sn.jappo.jappo_backend.parcours.dto;
 
+import sn.jappo.jappo_backend.parcours.entity.StadeAccompagnement;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -13,5 +15,6 @@ public class CreatePhaseRequest {
     private String nom;
     private String description;
     private Integer ordre;
+    private StadeAccompagnement stade;
 
 }

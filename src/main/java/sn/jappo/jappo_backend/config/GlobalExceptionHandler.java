@@ -4,11 +4,15 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
@@ -18,6 +22,8 @@ import sn.jappo.jappo_backend.projet.exception.PromotionBloqueeException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> handleResponseStatusException(ResponseStatusException exception) {
@@ -68,6 +74,20 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<Map<String, Object>> handleAuthenticationException(AuthenticationException exception) {
         return build(HttpStatus.UNAUTHORIZED, "Identifiants invalides");
+    }
+
+    // AccessDeniedException hérite de RuntimeException : sans ce handler, un refus
+    // @PreAuthorize serait renvoyé en 400 par handleRuntimeException.
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDeniedException(AccessDeniedException exception) {
+        return build(HttpStatus.FORBIDDEN, "Accès refusé");
+    }
+
+    // Les erreurs SQL contiennent requêtes et schéma : journalisées côté serveur, jamais renvoyées au client.
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<Map<String, Object>> handleDataAccessException(DataAccessException exception) {
+        log.error("Erreur d'accès aux données", exception);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Une erreur inattendue est survenue.");
     }
 
     @ExceptionHandler(MeetingException.class)

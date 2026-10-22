@@ -3,6 +3,8 @@ package sn.jappo.jappo_backend.projet.dto;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+import sn.jappo.jappo_backend.parcours.entity.StadeAccompagnement;
+
 import sn.jappo.jappo_backend.projet.entity.StatutProjet;
 
 public record ProjetResponse(
@@ -28,5 +30,7 @@ public record ProjetResponse(
         String nomParcours,
         UUID phaseId,
         String nomPhase,
-        Integer phaseOrdre
+        Integer phaseOrdre,
+        // Stade de la phase de la cohorte active (null si non renseigné)
+        StadeAccompagnement stade
 ) {}

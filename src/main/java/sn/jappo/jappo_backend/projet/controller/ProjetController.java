@@ -40,12 +40,14 @@ public class ProjetController {
     // -----------------------------------------------------------------------
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
     public ResponseEntity<List<ProjetResponse>> getProjets(
             @RequestParam(required = false) String statutArchivage) {
         return ResponseEntity.ok(projetService.getProjetsForActiveStructure(statutArchivage));
     }
 
     @GetMapping("/cohorte/{cohorteId}")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
     public ResponseEntity<List<ProjetResponse>> getProjetsByCohorte(@PathVariable UUID cohorteId) {
         return ResponseEntity.ok(projetService.getProjetsByCohorte(cohorteId));
     }
@@ -90,6 +92,16 @@ public class ProjetController {
         return ResponseEntity.ok(projetService.getProjetById(id));
     }
 
+    @PostMapping("/{id}/cloturer")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
+    public ResponseEntity<ProjetResponse> cloturerAccompagnement(
+            @PathVariable UUID id,
+            @RequestBody CloturerAccompagnementRequest request,
+            @AuthenticationPrincipal User currentUser) {
+        participationService.cloturerAccompagnement(id, request, currentUser);
+        return ResponseEntity.ok(projetService.getProjetById(id));
+    }
+
     // -----------------------------------------------------------------------
     // Mise à jour
     // -----------------------------------------------------------------------
@@ -115,6 +127,7 @@ public class ProjetController {
     // -----------------------------------------------------------------------
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
     public ResponseEntity<Void> archiverProjet(
             @PathVariable UUID id,
             @AuthenticationPrincipal User currentUser) {
@@ -123,6 +136,7 @@ public class ProjetController {
     }
 
     @PatchMapping("/{id}/restaurer")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
     public ResponseEntity<Void> restaurerProjet(
             @PathVariable UUID id,
             @AuthenticationPrincipal User currentUser) {

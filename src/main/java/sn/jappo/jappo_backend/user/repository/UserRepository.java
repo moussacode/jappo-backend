@@ -17,6 +17,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("SELECT COUNT(m) FROM MembreStructure m WHERE m.structure.id = :structureId AND m.role = 'ENTREPRENEUR'")
 long countEntrepreneursByStructureId(@Param("structureId") UUID structureId);
 
-@Query("SELECT COUNT(m) FROM MembreStructure m WHERE m.structure.id = :structureId AND m.role = 'ENTREPRENEUR' AND m.statut = 'ACTIF'")
+@Query("SELECT COUNT(m) FROM MembreStructure m WHERE m.structure.id = :structureId AND m.role = 'ENTREPRENEUR' AND m.statut = 'ACCEPTE'")
 long countEntrepreneursActifsByStructureId(@Param("structureId") UUID structureId);
 }

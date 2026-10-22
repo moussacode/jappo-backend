@@ -91,6 +91,17 @@ public class MissionProjet {
     }
 
     // Helper pour retirer un livrable proprement
+    /**
+     * Règle unique de retard : mission non validée dont l'échéance (portée par la
+     * mission de cohorte) est dépassée. Même règle que le tableau de bord et le frontend.
+     */
+    public boolean estEnRetard(java.time.LocalDate aujourdhui) {
+        return statut != StatutMission.VALIDE
+                && missionCohorte != null
+                && missionCohorte.getDateEcheance() != null
+                && missionCohorte.getDateEcheance().isBefore(aujourdhui);
+    }
+
     public void removeLivrable(Livrable livrable) {
         livrables.remove(livrable);
         livrable.setMissionProjet(null);

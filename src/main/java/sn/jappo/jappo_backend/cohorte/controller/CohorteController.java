@@ -13,10 +13,12 @@ import sn.jappo.jappo_backend.cohorte.dto.AffecterCoachsRequest;
 import sn.jappo.jappo_backend.cohorte.dto.CohorteResponse;
 import sn.jappo.jappo_backend.cohorte.dto.CreateCohorteRequest;
 import sn.jappo.jappo_backend.cohorte.dto.InviterEntrepreneursRequest;
+import sn.jappo.jappo_backend.cohorte.dto.RapportCohorteDTO;
 import sn.jappo.jappo_backend.cohorte.dto.UpdateCohorteRequest;
 import sn.jappo.jappo_backend.cohorte.entity.StatutCohorte;
 import sn.jappo.jappo_backend.cohorte.service.CohorteService;
 import sn.jappo.jappo_backend.cohorte.service.ParticipationService;
+import sn.jappo.jappo_backend.cohorte.service.RapportCohorteService;
 import sn.jappo.jappo_backend.projet.dto.ParticipationCohorteResponse;
 import sn.jappo.jappo_backend.projet.dto.PromotionGroupeeRequest;
 import sn.jappo.jappo_backend.projet.dto.PromotionGroupeeResultat;
@@ -30,6 +32,7 @@ public class CohorteController {
 
     private final CohorteService cohorteService;
     private final ParticipationService participationService;
+    private final RapportCohorteService rapportCohorteService;
 
     @GetMapping
     public ResponseEntity<List<CohorteResponse>> getCohortesForStructure(
@@ -54,6 +57,13 @@ public class CohorteController {
     @GetMapping("/{id}")
     public ResponseEntity<CohorteResponse> getCohorteById(@PathVariable UUID id) {
         return ResponseEntity.ok(cohorteService.getCohorteById(id));
+    }
+
+    /** Rapport de pilotage : synthèse et détail par projet passé par la cohorte. */
+    @GetMapping("/{id}/rapport")
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
+    public ResponseEntity<RapportCohorteDTO> getRapport(@PathVariable UUID id) {
+        return ResponseEntity.ok(rapportCohorteService.genererRapport(id));
     }
 
     @GetMapping("/{id}/coachs")

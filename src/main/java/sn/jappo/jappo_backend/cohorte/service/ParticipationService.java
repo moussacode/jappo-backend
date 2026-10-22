@@ -32,13 +32,17 @@ import sn.jappo.jappo_backend.parcours.repository.EtapeRepository;
 import sn.jappo.jappo_backend.parcours.entity.ParcoursPhase;
 import sn.jappo.jappo_backend.parcours.repository.ParcoursPhaseRepository;
 import sn.jappo.jappo_backend.progression.service.ProgressionService;
+import sn.jappo.jappo_backend.progression.entity.Progression;
+import sn.jappo.jappo_backend.projet.dto.CloturerAccompagnementRequest;
 import sn.jappo.jappo_backend.projet.dto.MissionNonValidee;
 import sn.jappo.jappo_backend.projet.dto.ParticipationCohorteResponse;
 import sn.jappo.jappo_backend.projet.dto.PromotionGroupeeResultat;
 import sn.jappo.jappo_backend.projet.dto.PromouvoirProjetRequest;
 import sn.jappo.jappo_backend.projet.entity.Projet;
+import sn.jappo.jappo_backend.projet.entity.StatutProjet;
 import sn.jappo.jappo_backend.projet.exception.PromotionBloqueeException;
 import sn.jappo.jappo_backend.projet.repository.ProjetRepository;
+import sn.jappo.jappo_backend.projet.service.ProjetAccessGuard;
 import sn.jappo.jappo_backend.structure.entity.Structure;
 import sn.jappo.jappo_backend.structure.repository.StructureRepository;
 import sn.jappo.jappo_backend.user.entity.User;
@@ -63,6 +67,7 @@ public class ParticipationService {
     private final MissionEtapeService missionEtapeService;
         private final EtapeRepository etapeRepository;
         private final ProgressionService progressionService;
+    private final ProjetAccessGuard projetAccessGuard;
     private final CohorteService cohorteService;
     private final ParcoursPhaseRepository parcoursPhaseRepository;
 
@@ -173,6 +178,13 @@ public class ParticipationService {
             );
         }
 
+        if (projet.getStatut() != StatutProjet.ACTIF) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "L'accompagnement de ce projet est clôturé : il ne peut plus être promu"
+            );
+        }
+
         Cohorte cohorteCible = cohorteRepository
                 .findByIdAndStructureId(
                         request.cohorteCibleId(),
@@ -215,6 +227,126 @@ public class ParticipationService {
         progressionService.synchroniserPhaseApresPromotion(projetId, cohorteCible);
 
         return projet;
+    }
+
+    // -----------------------------------------------------------------------
+    // Clôture de l'accompagnement (sortie de programme)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Clôture l'accompagnement d'un projet.
+     *
+     * Le passage d'une phase à l'autre (y compris vers la post-incubation) reste une
+     * promotion vers une cohorte de phase supérieure. La clôture couvre les deux sorties
+     * qu'aucune promotion ne permet :
+     * - DIPLOME : le projet est dans la dernière phase de son parcours et ses missions
+     *   obligatoires sont validées ; sinon forçage avec motif ;
+     * - ABANDONNE : possible depuis n'importe quelle phase, motif obligatoire.
+     *
+     * La participation active est fermée (TERMINE pour un diplôme, RETIRE pour un abandon),
+     * les progressions ouvertes sont terminées ou abandonnées, le statut du projet est mis à jour.
+     * Rôles : ADMIN_STRUCTURE et COACH (vérifié par @PreAuthorize).
+     */
+    @Transactional
+    public Projet cloturerAccompagnement(
+            UUID projetId,
+            CloturerAccompagnementRequest request,
+            User currentUser
+    ) {
+        UUID structureId = getRequiredTenantId();
+
+        StatutProjet issue = request.issue();
+        if (issue != StatutProjet.DIPLOME && issue != StatutProjet.ABANDONNE) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "L'issue doit être DIPLOME ou ABANDONNE"
+            );
+        }
+
+        String motif = request.motif() != null ? request.motif().trim() : "";
+        boolean motifRequis = issue == StatutProjet.ABANDONNE || request.forcer();
+        if (motifRequis && motif.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    issue == StatutProjet.ABANDONNE
+                            ? "Un motif est obligatoire pour déclarer un abandon"
+                            : "Un motif est obligatoire pour forcer un diplôme"
+            );
+        }
+
+        Projet projet = projetRepository
+                .findByIdAndStructureId(projetId, structureId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Projet introuvable"
+                ));
+
+        if (projet.isArchive()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Un projet archivé ne peut pas être clôturé"
+            );
+        }
+
+        if (projet.getStatut() != StatutProjet.ACTIF) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "L'accompagnement de ce projet est déjà clôturé"
+            );
+        }
+
+        if (issue == StatutProjet.DIPLOME && !request.forcer()) {
+            if (!estDansDernierePhase(projet)) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Le projet n'est pas dans la dernière phase de son parcours : "
+                                + "promouvez-le vers une cohorte de phase supérieure ou forcez le diplôme avec un motif"
+                );
+            }
+
+            List<MissionNonValidee> missionsNonValidees = getMissionsNonValidees(projet, structureId);
+            if (!missionsNonValidees.isEmpty()) {
+                throw new PromotionBloqueeException(missionsNonValidees);
+            }
+        }
+
+        String raison = issue == StatutProjet.DIPLOME
+                ? "Diplômé" + (motif.isEmpty() ? "" : " : " + motif) + (request.forcer() ? " (forcé)" : "")
+                : "Abandon : " + motif;
+
+        participationRepository
+                .findByProjetIdAndDateSortieIsNull(projetId)
+                .ifPresent(p -> fermerParticipation(
+                        p,
+                        issue == StatutProjet.DIPLOME ? MotifSortie.TERMINE : MotifSortie.RETIRE,
+                        raison,
+                        currentUser
+                ));
+
+        progressionService.cloturerProgressionsOuvertes(
+                projetId,
+                issue == StatutProjet.DIPLOME
+                        ? Progression.StatutProgression.TERMINE
+                        : Progression.StatutProgression.ABANDONNE,
+                issue == StatutProjet.DIPLOME ? "SORTIE_DIPLOME" : "SORTIE_ABANDON",
+                currentUser
+        );
+
+        projet.setStatut(issue);
+        return projetRepository.save(projet);
+    }
+
+    /** Vrai si la phase de la cohorte active est la dernière phase non archivée du parcours. */
+    private boolean estDansDernierePhase(Projet projet) {
+        Cohorte cohorte = projet.getCohorte();
+        if (cohorte == null || cohorte.getParcours() == null || cohorte.getPhase() == null) {
+            return false;
+        }
+        UUID parcoursId = cohorte.getParcours().getId();
+        int ordreActuel = getOrdrePhase(parcoursId, cohorte.getPhase().getId());
+        return parcoursPhaseRepository.findByParcours_IdOrderByOrdreAsc(parcoursId).stream()
+                .filter(pp -> pp.getPhase() != null && !pp.getPhase().isArchive())
+                .noneMatch(pp -> pp.getOrdre() != null && pp.getOrdre() > ordreActuel);
     }
 
     /**
@@ -315,12 +447,14 @@ public class ParticipationService {
     public List<ParticipationCohorteResponse> getHistorique(UUID projetId) {
         UUID structureId = getRequiredTenantId();
 
-        projetRepository
+        Projet projet = projetRepository
                 .findByIdAndStructureId(projetId, structureId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Projet introuvable"
                 ));
+
+        projetAccessGuard.verifierLecture(projet);
 
         return participationRepository
                 .findByProjetIdOrderByDateEntreeDesc(projetId)

@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -33,6 +34,13 @@ class TenantFilterTest {
     @Mock private HttpServletRequest request;
     @Mock private HttpServletResponse response;
     @Mock private FilterChain filterChain;
+
+    @BeforeEach
+    void requeteApi() {
+        // Un conteneur servlet ne renvoie jamais null pour ces deux valeurs ; le filtre les lit.
+        lenient().when(request.getRequestURI()).thenReturn("/api/projets");
+        lenient().when(request.getContextPath()).thenReturn("");
+    }
 
     @AfterEach
     void cleanup() {

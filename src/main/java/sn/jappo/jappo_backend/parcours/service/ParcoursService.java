@@ -281,6 +281,7 @@ public class ParcoursService {
         response.setId(phase.getId());
         response.setNom(phase.getNom());
         response.setDescription(phase.getDescription());
+        response.setStade(phase.getStade());
 
         // L'ordre appartient à la relation Parcours ↔ Phase.
         response.setOrdre(parcoursPhase.getOrdre());

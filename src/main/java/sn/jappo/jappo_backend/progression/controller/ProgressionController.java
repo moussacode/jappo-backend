@@ -32,6 +32,7 @@ public class ProgressionController {
     // -----------------------------------------------------------------------
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN_STRUCTURE') or hasRole('COACH')")
     public ResponseEntity<List<ProgressionDTO>> getAllProgressions() {
         return ResponseEntity.ok(
                 progressionService.getAllProgressions()

@@ -1,5 +1,8 @@
 package sn.jappo.jappo_backend.assistance.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
@@ -13,6 +16,8 @@ import java.util.Map;
 
 @Service
 public class AssistanceService {
+
+    private static final Logger log = LoggerFactory.getLogger(AssistanceService.class);
 
     private final String n8nBaseUrl;
     private static final String N8N_WEBHOOK_PATH = "/webhook/jappo-support";
@@ -32,10 +37,6 @@ public class AssistanceService {
     }
 
     public Map<String, Object> envoyerDemande(AssistanceRequest request) {
-        System.out.println(">>> APPEL N8N");
-        System.out.println(">>> URL : " + n8nBaseUrl + N8N_WEBHOOK_PATH);
-        System.out.println(">>> BODY ENVOYÉ : email=" + request.email() + " | message=" + request.message());
-
         try {
             Map<String, Object> response = restClient.post()
                     .uri(N8N_WEBHOOK_PATH)
@@ -44,17 +45,16 @@ public class AssistanceService {
                     .retrieve()
                     .body(Map.class);
 
-            System.out.println(">>> RÉPONSE N8N : " + response);
             return response;
 
         } catch (ResourceAccessException e) {
-            System.err.println(">>> ERREUR RÉSEAU vers n8n : " + e.getMessage());
+            log.warn("Assistance : n8n injoignable ({})", e.getMessage());
             throw new IllegalStateException(
                     "Le service d'assistance est momentanément indisponible (n8n injoignable ou trop lent).", e
             );
 
         } catch (RestClientResponseException e) {
-            System.err.println(">>> ERREUR HTTP n8n (" + e.getStatusCode() + ") : " + e.getResponseBodyAsString());
+            log.warn("Assistance : n8n a répondu {}", e.getStatusCode());
             throw new IllegalStateException(
                     "Le service d'assistance a renvoyé une erreur : " + e.getResponseBodyAsString(), e
             );

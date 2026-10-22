@@ -44,6 +44,7 @@ public class ProjetService {
     private final ParticipationService participationService;
     private final ParticipationCohorteRepository participationCohorteRepository;
     private final ParcoursPhaseRepository parcoursPhaseRepository;
+    private final ProjetAccessGuard projetAccessGuard;
 
     public ProjetService(
             ProjetRepository projetRepository,
@@ -54,7 +55,8 @@ public class ProjetService {
             MembreStructureRepository membreStructureRepository,
             ParticipationService participationService,
             ParticipationCohorteRepository participationCohorteRepository,
-            ParcoursPhaseRepository parcoursPhaseRepository
+            ParcoursPhaseRepository parcoursPhaseRepository,
+            ProjetAccessGuard projetAccessGuard
     ) {
         this.projetRepository = projetRepository;
         this.structureRepository = structureRepository;
@@ -65,6 +67,7 @@ public class ProjetService {
         this.participationService = participationService;
         this.participationCohorteRepository = participationCohorteRepository;
         this.parcoursPhaseRepository = parcoursPhaseRepository;
+        this.projetAccessGuard = projetAccessGuard;
     }
 
     // -----------------------------------------------------------------------
@@ -246,6 +249,8 @@ public class ProjetService {
                         "Projet introuvable pour cet ID : " + id
                 ));
 
+        projetAccessGuard.verifierLecture(projet);
+
         return mapToResponse(projet);
     }
 
@@ -254,6 +259,8 @@ public class ProjetService {
             UUID entrepreneurId
     ) {
         UUID activeStructureId = getRequiredTenantId();
+
+        projetAccessGuard.verifierLectureEntrepreneur(entrepreneurId);
 
         Projet projet = projetRepository
                 .findByEntrepreneurIdAndStructureId(
@@ -605,7 +612,10 @@ public class ProjetService {
                 nomParcours,
                 phaseId,
                 nomPhase,
-                phaseOrdre
+                phaseOrdre,
+                projet.getCohorte() != null && projet.getCohorte().getPhase() != null
+                        ? projet.getCohorte().getPhase().getStade()
+                        : null
         );
     }
 

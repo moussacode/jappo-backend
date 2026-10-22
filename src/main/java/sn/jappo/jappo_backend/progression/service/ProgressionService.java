@@ -35,6 +35,7 @@ import sn.jappo.jappo_backend.progression.repository.HistoriqueProgressionReposi
 import sn.jappo.jappo_backend.progression.repository.ProgressionRepository;
 import sn.jappo.jappo_backend.projet.entity.Projet;
 import sn.jappo.jappo_backend.projet.repository.ProjetRepository;
+import sn.jappo.jappo_backend.projet.service.ProjetAccessGuard;
 import sn.jappo.jappo_backend.user.entity.User;
 import sn.jappo.jappo_backend.mission.entity.MissionEtape;
 import sn.jappo.jappo_backend.mission.entity.MissionProjet;
@@ -66,6 +67,7 @@ public class ProgressionService {
     private final LivrableRepository livrableRepository;
     private final MissionCohorteRepository missionCohorteRepository;
     private final LivrableAttenduRepository livrableAttenduRepository;
+    private final ProjetAccessGuard projetAccessGuard;
 
     private UUID getRequiredTenantId() {
         UUID tenantId = TenantContext.getCurrentTenant();
@@ -97,7 +99,9 @@ public class ProgressionService {
         if (!projet.getStructure().getId().equals(structureId)) {
             throw new IllegalArgumentException("Projet introuvable dans votre structure");
         }
-        
+
+        projetAccessGuard.verifierLecture(projet);
+
         return progressionRepository.findAllByProjetId(projetId)
                 .stream()
                 .map(this::mapToDTO)
@@ -114,7 +118,9 @@ public class ProgressionService {
         if (!progression.getProjet().getStructure().getId().equals(structureId)) {
             throw new ProgressionNotFoundException("Progression introuvable dans votre structure");
         }
-        
+
+        projetAccessGuard.verifierLecture(progression.getProjet());
+
         return mapToDTO(progression);
     }
 
@@ -317,6 +323,34 @@ public class ProgressionService {
         progressionRepository.save(progression);
     }
 
+    /**
+     * Termine ou abandonne les progressions encore ouvertes d'un projet lors de la
+     * clôture de son accompagnement. Appelé uniquement par ParticipationService,
+     * après les contrôles de structure et de rôle.
+     */
+    @Transactional
+    public void cloturerProgressionsOuvertes(UUID projetId, StatutProgression statutFinal, String raison, User effectuePar) {
+        LocalDateTime maintenant = LocalDateTime.now();
+        progressionRepository.findAllByProjetId(projetId).stream()
+                .filter(p -> p.getStatut() == StatutProgression.EN_COURS || p.getStatut() == StatutProgression.EN_PAUSE)
+                .forEach(progression -> {
+                    HistoriqueProgression historique = new HistoriqueProgression();
+                    historique.setProgression(progression);
+                    historique.setEtapeEntree(progression.getEtape());
+                    historique.setPhaseEntree(progression.getPhase());
+                    historique.setDateSortie(maintenant);
+                    historique.setRaison(raison);
+                    historique.setTypeChangement(TypeChangement.MANUEL);
+                    historique.setEffectuePar(effectuePar);
+                    historiqueProgressionRepository.save(historique);
+
+                    progression.setStatut(statutFinal);
+                    progression.setDateFin(maintenant);
+                    progression.setDateDerniereMaj(maintenant);
+                    progressionRepository.save(progression);
+                });
+    }
+
     @Transactional
     public ProgressionDTO mettreEnPause(UUID id, User effectuePar) {
         UUID structureId = getRequiredTenantId();
@@ -417,7 +451,9 @@ public class ProgressionService {
         if (!progression.getProjet().getStructure().getId().equals(structureId)) {
             throw new ProgressionNotFoundException("Progression introuvable dans votre structure");
         }
-        
+
+        projetAccessGuard.verifierLecture(progression.getProjet());
+
         return historiqueProgressionRepository.findByProgressionIdOrderByDateEntreeDesc(progressionId)
                 .stream()
                 .map(this::mapToHistoriqueDTO)
@@ -533,6 +569,8 @@ public class ProgressionService {
             throw new ProgressionNotFoundException("Progression introuvable dans votre structure");
         }
 
+        projetAccessGuard.verifierLecture(progression.getProjet());
+
         Etape etapeCible = etapeRepository.findByIdAndStructureId(etapeId, structureId)
                 .orElseThrow(() -> new IllegalArgumentException("Étape introuvable"));
 
@@ -582,6 +620,8 @@ public class ProgressionService {
         UUID structureId = getRequiredTenantId();
         Projet projet = projetRepository.findByIdAndStructureId(projetId, structureId)
             .orElseThrow(() -> new ProgressionNotFoundException("Projet introuvable dans votre structure"));
+
+        projetAccessGuard.verifierLecture(projet);
 
         List<Progression> progressions = progressionRepository.findAllByProjetId(projetId);
         Parcours parcoursCohorte = projet.getCohorte() != null ? projet.getCohorte().getParcours() : null;

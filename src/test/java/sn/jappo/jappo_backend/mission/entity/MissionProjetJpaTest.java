@@ -10,12 +10,16 @@ import java.util.List;
 import java.util.UUID;
 
 import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 
 import sn.jappo.jappo_backend.cohorte.entity.Cohorte;
@@ -126,6 +130,11 @@ class MissionProjetJpaTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Test
     void canPersistMissionProjetWithMissionEtapeOnly() {
@@ -724,6 +733,7 @@ class MissionProjetJpaTest {
             projet.setEntrepreneur(entrepreneur);
             projetRepository.save(projet);
 
+            authentifier(entrepreneur, "ENTREPRENEUR");
             var suivi = suiviProjetService.getSuiviProjet(projet.getId());
             assertEquals(1, suivi.missionsTotal());
             assertEquals(1, suivi.livrablesAttendusTotal());
@@ -788,6 +798,7 @@ class MissionProjetJpaTest {
         depose.setStructure(structure);
         livrableRepository.save(depose);
 
+        authentifier(new User(), "COACH");
         TenantContext.setCurrentTenant(structure.getId());
         try {
             var route = progressionService.getFeuilleRouteProjet(projet.getId());
@@ -848,6 +859,7 @@ class MissionProjetJpaTest {
         UUID progressionId = progression.getId();
         UUID projetId = projet.getId();
 
+        authentifier(new User(), "COACH");
         TenantContext.setCurrentTenant(structure.getId());
         try {
             progressionService.validerEtape(progressionId, null);
@@ -1043,6 +1055,86 @@ class MissionProjetJpaTest {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    @Test
+    void feuilleRoute_entrepreneurProprietaire_peutLireSonProjet() {
+        Structure structure = createStructure();
+        Cohorte cohorte = createCohorte(structure);
+        createEtapeForPhase(structure, cohorte.getPhase());
+        User proprietaire = createUser("proprietaire");
+        Projet projet = createProjet(structure);
+        projet.setCohorte(cohorte);
+        projet.setEntrepreneur(proprietaire);
+        projetRepository.save(projet);
+
+        authentifier(proprietaire, "ENTREPRENEUR");
+        TenantContext.setCurrentTenant(structure.getId());
+        try {
+            assertNotNull(progressionService.getFeuilleRouteProjet(projet.getId()));
+            assertNotNull(participationService.getHistorique(projet.getId()));
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void feuilleRouteEtHistorique_autreEntrepreneurDeLaMemeStructure_recoit404() {
+        Structure structure = createStructure();
+        Cohorte cohorte = createCohorte(structure);
+        Projet projet = createProjet(structure);
+        projet.setCohorte(cohorte);
+        projet.setEntrepreneur(createUser("proprietaire"));
+        projetRepository.save(projet);
+        long progressionsAvant = progressionRepository.count();
+
+        authentifier(createUser("intrus"), "ENTREPRENEUR");
+        TenantContext.setCurrentTenant(structure.getId());
+        try {
+            ResponseStatusException route = assertThrows(ResponseStatusException.class,
+                    () -> progressionService.getFeuilleRouteProjet(projet.getId()));
+            assertEquals(HttpStatus.NOT_FOUND, route.getStatusCode());
+
+            ResponseStatusException historique = assertThrows(ResponseStatusException.class,
+                    () -> participationService.getHistorique(projet.getId()));
+            assertEquals(HttpStatus.NOT_FOUND, historique.getStatusCode());
+
+            // Le GET de feuille de route initialise une progression : un accès refusé ne doit rien écrire.
+            assertEquals(progressionsAvant, progressionRepository.count());
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void feuilleRoute_sansUtilisateurAuthentifie_estRefusee() {
+        Structure structure = createStructure();
+        Projet projet = createProjet(structure);
+        projet.setEntrepreneur(createUser("proprietaire"));
+        projetRepository.save(projet);
+
+        TenantContext.setCurrentTenant(structure.getId());
+        try {
+            assertThrows(ResponseStatusException.class,
+                    () -> progressionService.getFeuilleRouteProjet(projet.getId()));
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    private void authentifier(User user, String role) {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                user, null, List.of(new SimpleGrantedAuthority(role), new SimpleGrantedAuthority("ROLE_" + role))));
+    }
+
+    private User createUser(String prefixe) {
+        User user = new User();
+        user.setPrenom("Test");
+        user.setNom(prefixe);
+        user.setEmail(prefixe + "-" + UUID.randomUUID() + "@test.local");
+        user.setPassword("secret");
+        user.setRoleGlobal(RoleGlobal.USER);
+        return userRepository.save(user);
     }
 
     private Structure createStructure() {
